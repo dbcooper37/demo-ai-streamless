@@ -6,8 +6,8 @@ import ChatHeader from './components/ChatHeader';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 
-const WEBSOCKET_URL = 'ws://localhost:8080/ws/chat';
-const AI_SERVICE_URL = '/api';
+const WEBSOCKET_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws/chat';
+const AI_SERVICE_URL = import.meta.env.VITE_API_URL || '/api';
 
 function App() {
   // Session management

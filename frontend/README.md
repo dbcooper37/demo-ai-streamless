@@ -129,12 +129,14 @@ proxy: {
 
 ### Environment Variables
 
-Create `.env` file:
+Create `.env` file (see `.env.example` for reference):
 
 ```env
-VITE_WEBSOCKET_URL=ws://localhost:8080/ws/chat
+VITE_WS_URL=ws://localhost:8080/ws/chat
 VITE_API_URL=/api
 ```
+
+**Note**: The application will use these environment variables to configure the WebSocket and API endpoints. If not set, it will fall back to default localhost URLs.
 
 ## 📱 Responsive Design
 

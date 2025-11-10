@@ -8,7 +8,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://python-ai:8000',
+        target: process.env.PYTHON_AI_TARGET || 'http://python-ai:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       }
