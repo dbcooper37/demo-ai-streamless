@@ -132,6 +132,7 @@ export const useWebSocket = (url, sessionId, onMessage) => {
 
     // Update status immediately for better UX
     setConnectionStatus('disconnected');
+    setIsConnected(false);
 
     // Clean up the connection
     cleanup();
