@@ -14,17 +14,22 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+
 /**
- * Event Publisher for Kafka
+ * Event Publisher for Kafka (PoC - Optional)
  * 
  * Publishes domain events to Kafka for:
  * - Event sourcing
  * - Audit logging
  * - Analytics
  * - Multi-service coordination
+ * 
+ * Enable with: KAFKA_ENABLED=true
  */
 @Service
 @Slf4j
+@ConditionalOnProperty(name = "spring.kafka.enabled", havingValue = "true", matchIfMissing = false)
 public class EventPublisher {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;

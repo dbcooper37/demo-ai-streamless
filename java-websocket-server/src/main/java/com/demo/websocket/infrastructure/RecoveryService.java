@@ -4,13 +4,11 @@ import com.demo.websocket.domain.*;
 import com.demo.websocket.exception.MessageNotFoundException;
 import com.demo.websocket.exception.RecoveryException;
 import com.demo.websocket.service.MetricsService;
+import com.demo.websocket.service.SimpleDistributedLockService;
 import io.micrometer.core.instrument.Tags;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -25,7 +23,7 @@ public class RecoveryService {
     private final RedisStreamCache streamCache;
     private final MessageRepository messageRepository;
     private final MetricsService metricsService;
-    private final RedissonClient redissonClient;
+    private final SimpleDistributedLockService lockService;
 
     @Value("${recovery.session-ttl-minutes:10}")
     private int sessionTtlMinutes;
@@ -39,11 +37,11 @@ public class RecoveryService {
     public RecoveryService(RedisStreamCache streamCache,
                           MessageRepository messageRepository,
                           MetricsService metricsService,
-                          RedissonClient redissonClient) {
+                          SimpleDistributedLockService lockService) {
         this.streamCache = streamCache;
         this.messageRepository = messageRepository;
         this.metricsService = metricsService;
-        this.redissonClient = redissonClient;
+        this.lockService = lockService;
     }
 
     /**

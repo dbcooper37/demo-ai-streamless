@@ -16,15 +16,20 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+
 /**
- * Kafka Configuration for Event Sourcing
+ * Kafka Configuration for Event Sourcing (PoC - Optional)
  * 
  * Features:
  * - Idempotent producer for exactly-once semantics
  * - Manual acknowledgment for consumer control
  * - Optimized batching and compression
+ * 
+ * Enable with: KAFKA_ENABLED=true
  */
 @Configuration
+@ConditionalOnProperty(name = "spring.kafka.enabled", havingValue = "true", matchIfMissing = false)
 public class KafkaConfig {
 
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")

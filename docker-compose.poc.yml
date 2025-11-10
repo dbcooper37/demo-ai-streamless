@@ -16,9 +16,9 @@ services:
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      interval: 15s
+      timeout: 5s
+      retries: 3
     networks:
       - app-network
 
@@ -56,21 +56,23 @@ services:
       # Auto create topics
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       
-      # Retention
-      KAFKA_LOG_RETENTION_HOURS: 24
-      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      # Retention (PoC - short retention)
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_LOG_RETENTION_BYTES: 104857600  # 100MB
     volumes:
       - kafka-data:/tmp/kraft-combined-logs
     networks:
       - app-network
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
-      interval: 10s
+      interval: 20s
       timeout: 10s
-      retries: 5
+      retries: 3
 
   # Kafka UI (Optional - for development/debugging)
+  # Use: docker-compose -f docker-compose.poc.yml --profile debug up
   kafka-ui:
+    profiles: ["debug"]
     image: provectuslabs/kafka-ui:latest
     container_name: demo-kafka-ui
     depends_on:
@@ -143,8 +145,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - NODE_ID=${NODE_ID:-node-1}
       
-      # JVM (PoC - light settings)
-      - JAVA_OPTS=-Xms256m -Xmx512m
+      # JVM (PoC - minimal settings)
+      - JAVA_OPTS=-Xms128m -Xmx384m
     depends_on:
       redis:
         condition: service_healthy
