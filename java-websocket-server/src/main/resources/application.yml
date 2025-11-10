@@ -1,0 +1,15 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: websocket-server
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+logging:
+  level:
+    com.demo.websocket: DEBUG
+    org.springframework.web.socket: DEBUG
