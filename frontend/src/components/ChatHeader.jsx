@@ -1,6 +1,6 @@
 import React from 'react';
 
-const ChatHeader = ({ connectionStatus }) => {
+const ChatHeader = ({ connectionStatus, isConnected, onReconnect, onDisconnect }) => {
   const getConnectionStatusText = () => {
     switch (connectionStatus) {
       case 'connected':
@@ -23,9 +23,29 @@ const ChatHeader = ({ connectionStatus }) => {
         </h1>
         <p className="subtitle">Real-time AI responses with WebSocket & Redis</p>
       </div>
-      <div className="connection-status">
-        <div className={`status-dot ${connectionStatus}`}></div>
-        <span className="status-text">{getConnectionStatusText()}</span>
+      <div className="connection-controls">
+        <div className="connection-status">
+          <div className={`status-dot ${connectionStatus}`}></div>
+          <span className="status-text">{getConnectionStatusText()}</span>
+        </div>
+        <div className="connection-buttons">
+          <button
+            className="ws-control-btn disconnect-btn"
+            onClick={onDisconnect}
+            disabled={!isConnected}
+            title="Ngắt kết nối WebSocket"
+          >
+            🔌 Disconnect
+          </button>
+          <button
+            className="ws-control-btn reconnect-btn"
+            onClick={onReconnect}
+            disabled={isConnected}
+            title="Kết nối lại WebSocket"
+          >
+            🔄 Reconnect
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -9,12 +9,16 @@ const PING_INTERVAL = 30000;
 export const useWebSocket = (url, sessionId, onMessage) => {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  
+
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const pingIntervalRef = useRef(null);
+  const manualDisconnectRef = useRef(false);
 
   const connect = useCallback(() => {
+    // Reset manual disconnect flag when connecting
+    manualDisconnectRef.current = false;
+
     try {
       const ws = new WebSocket(`${url}?session_id=${sessionId}`);
 
@@ -48,7 +52,6 @@ export const useWebSocket = (url, sessionId, onMessage) => {
       ws.onclose = () => {
         console.log('WebSocket disconnected');
         setIsConnected(false);
-        setConnectionStatus('reconnecting');
 
         // Clear ping interval
         if (pingIntervalRef.current) {
@@ -56,11 +59,17 @@ export const useWebSocket = (url, sessionId, onMessage) => {
           pingIntervalRef.current = null;
         }
 
-        // Attempt to reconnect
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('Attempting to reconnect...');
-          connect();
-        }, RECONNECT_DELAY);
+        // Only auto-reconnect if not manually disconnected
+        if (!manualDisconnectRef.current) {
+          setConnectionStatus('reconnecting');
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('Attempting to reconnect...');
+            connect();
+          }, RECONNECT_DELAY);
+        } else {
+          setConnectionStatus('disconnected');
+          console.log('Manual disconnect - not reconnecting');
+        }
       };
 
       wsRef.current = ws;
@@ -71,11 +80,14 @@ export const useWebSocket = (url, sessionId, onMessage) => {
   }, [url, sessionId, onMessage]);
 
   const disconnect = useCallback(() => {
+    // Set manual disconnect flag
+    manualDisconnectRef.current = true;
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
@@ -85,6 +97,8 @@ export const useWebSocket = (url, sessionId, onMessage) => {
       wsRef.current.close();
       wsRef.current = null;
     }
+
+    console.log('WebSocket manually disconnected');
   }, []);
 
   useEffect(() => {

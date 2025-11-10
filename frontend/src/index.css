@@ -66,6 +66,13 @@ body {
   font-weight: 400;
 }
 
+.connection-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-direction: column;
+}
+
 .connection-status {
   display: flex;
   align-items: center;
@@ -75,6 +82,44 @@ body {
   border-radius: 20px;
   font-size: 14px;
   backdrop-filter: blur(10px);
+}
+
+.connection-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.ws-control-btn {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  backdrop-filter: blur(10px);
+}
+
+.ws-control-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.ws-control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.disconnect-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.8);
+  border-color: rgba(239, 68, 68, 0.9);
+}
+
+.reconnect-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.8);
+  border-color: rgba(16, 185, 129, 0.9);
 }
 
 .status-dot {
@@ -448,8 +493,21 @@ body {
     font-size: 22px;
   }
 
+  .connection-controls {
+    width: 100%;
+  }
+
   .connection-status {
-    align-self: flex-end;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .connection-buttons {
+    width: 100%;
+  }
+
+  .ws-control-btn {
+    flex: 1;
   }
 
   .message-body {

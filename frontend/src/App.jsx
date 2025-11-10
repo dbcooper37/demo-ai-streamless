@@ -50,7 +50,7 @@ function App() {
   };
 
   // WebSocket connection
-  const { isConnected, connectionStatus } = useWebSocket(
+  const { isConnected, connectionStatus, reconnect, disconnect } = useWebSocket(
     WEBSOCKET_URL,
     sessionId,
     handleWebSocketMessage
@@ -84,7 +84,12 @@ function App() {
   return (
     <div className="app">
       <div className="chat-container">
-        <ChatHeader connectionStatus={connectionStatus} />
+        <ChatHeader
+          connectionStatus={connectionStatus}
+          isConnected={isConnected}
+          onReconnect={reconnect}
+          onDisconnect={disconnect}
+        />
         
         <div className="session-info">
           <span className="session-label">Session ID:</span>
