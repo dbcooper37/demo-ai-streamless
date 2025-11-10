@@ -1,5 +1,6 @@
 package com.demo.websocket.domain;
 
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,6 +13,11 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Entity
+@Table(name = "messages", indexes = {
+    @Index(name = "idx_conversation", columnList = "conversationId"),
+    @Index(name = "idx_user", columnList = "userId")
+})
 public class Message {
     private String id;
     private String conversationId;
