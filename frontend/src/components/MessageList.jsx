@@ -37,9 +37,14 @@ const MessageList = ({ messages, isLoading }) => {
 
   return (
     <div className="chat-messages">
-      {messages.map((msg, index) => (
-        <Message key={`${msg.message_id}-${index}`} message={msg} />
-      ))}
+      {messages.map((msg, index) => {
+        // Skip messages with missing required fields
+        if (!msg || !msg.message_id) {
+          console.warn('Skipping invalid message at index:', index, msg);
+          return null;
+        }
+        return <Message key={`${msg.message_id}-${index}`} message={msg} />;
+      })}
       <div ref={messagesEndRef} />
     </div>
   );
