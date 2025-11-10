@@ -4,27 +4,94 @@ server:
 spring:
   application:
     name: websocket-server
+  
+  # Redis Configuration
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:redis}
       port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+          max-wait: 2000ms
+  
+  # Kafka Configuration
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: chat-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 500
+    producer:
+      acks: all
+      retries: 3
+      compression-type: snappy
+    topics:
+      chat-events: chat-events
+      stream-events: stream-events
 
 # Node identification for distributed deployment
 NODE_ID: ${NODE_ID:node-default}
 
-# Actuator endpoints (optional - for production monitoring)
+# Security Configuration
+security:
+  jwt:
+    secret: ${JWT_SECRET:default-secret-key-change-this-in-production-minimum-256-bits}
+    expiration-ms: ${JWT_EXPIRATION_MS:3600000} # 1 hour
+
+# Cache Configuration
+cache:
+  caffeine:
+    max-size: ${CACHE_L1_MAX_SIZE:10000}
+    expire-after-write-minutes: ${CACHE_L1_EXPIRE_WRITE:5}
+    expire-after-access-minutes: ${CACHE_L1_EXPIRE_ACCESS:2}
+  redis:
+    default-ttl-minutes: ${CACHE_L2_TTL:10}
+
+# Stream Configuration
+stream:
+  max-pending-chunks: ${STREAM_MAX_PENDING_CHUNKS:1000}
+  backpressure-delay-ms: ${STREAM_BACKPRESSURE_DELAY:10}
+  recovery-timeout-minutes: ${STREAM_RECOVERY_TIMEOUT:5}
+
+# Actuator endpoints (for production monitoring)
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      node: ${NODE_ID}
 
+# Logging Configuration
 logging:
   level:
+    root: INFO
     com.demo.websocket: ${LOG_LEVEL:INFO}
     org.springframework.web.socket: INFO
+    org.springframework.kafka: ${KAFKA_LOG_LEVEL:WARN}
+    io.micrometer: WARN
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [${NODE_ID}] [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${NODE_ID}] [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE:logs/websocket-server.log}
+    max-size: 100MB
+    max-history: 30

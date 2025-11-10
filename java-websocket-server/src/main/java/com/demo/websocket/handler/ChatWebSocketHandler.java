@@ -5,6 +5,8 @@ import com.demo.websocket.infrastructure.*;
 import com.demo.websocket.model.ChatMessage;
 import com.demo.websocket.service.ChatHistoryService;
 import com.demo.websocket.service.RedisMessageListener;
+import com.demo.websocket.service.MetricsService;
+import com.demo.websocket.service.SecurityValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -29,6 +31,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final RecoveryService recoveryService;
     private final ChatHistoryService chatHistoryService;
     private final RedisMessageListener redisMessageListener;
+    private final MetricsService metricsService;
+    private final SecurityValidator securityValidator;
 
     // Legacy sessionId -> List of WebSocketSessions (for backward compatibility)
     private final Map<String, ConcurrentHashMap<String, WebSocketSession>> sessionMap = new ConcurrentHashMap<>();
@@ -38,20 +42,37 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                  ChatOrchestrator chatOrchestrator,
                                  RecoveryService recoveryService,
                                  ChatHistoryService chatHistoryService,
-                                 RedisMessageListener redisMessageListener) {
+                                 RedisMessageListener redisMessageListener,
+                                 MetricsService metricsService,
+                                 SecurityValidator securityValidator) {
         this.objectMapper = objectMapper;
         this.sessionManager = sessionManager;
         this.chatOrchestrator = chatOrchestrator;
         this.recoveryService = recoveryService;
         this.chatHistoryService = chatHistoryService;
         this.redisMessageListener = redisMessageListener;
+        this.metricsService = metricsService;
+        this.securityValidator = securityValidator;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
+        String sessionId = null;
+        String userId = null;
+        
         try {
-            String userId = extractUserId(wsSession);
-            String sessionId = extractSessionId(wsSession);
+            userId = extractUserId(wsSession);
+            sessionId = extractSessionId(wsSession);
+            String token = extractToken(wsSession);
+
+            // Security validation
+            if (!securityValidator.validateToken(token, userId)) {
+                log.warn("Invalid token for user: userId={}", userId);
+                metricsService.recordWebSocketConnection(userId, false);
+                sendError(wsSession, "Authentication failed");
+                wsSession.close(CloseStatus.NOT_ACCEPTABLE);
+                return;
+            }
 
             // Legacy session tracking (for backward compatibility with old clients)
             sessionMap.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>())
@@ -66,6 +87,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             log.info("WebSocket connected: wsId={}, sessionId={}, userId={}",
                     wsSession.getId(), sessionId, userId);
 
+            // Record metrics
+            metricsService.recordWebSocketConnection(userId, true);
+
             // Send welcome message
             sendWelcomeMessage(wsSession, sessionId);
 
@@ -76,8 +100,20 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             chatOrchestrator.startStreamingSession(sessionId, userId,
                     new WebSocketStreamCallback(wsSession));
 
+        } catch (SecurityException e) {
+            log.error("Security violation during connection: sessionId={}", sessionId, e);
+            if (userId != null) {
+                metricsService.recordWebSocketConnection(userId, false);
+            }
+            metricsService.recordError("SECURITY_VIOLATION", "WebSocketHandler");
+            sendError(wsSession, "Security check failed");
+            wsSession.close(CloseStatus.NOT_ACCEPTABLE);
         } catch (Exception e) {
             log.error("Error establishing connection", e);
+            if (userId != null) {
+                metricsService.recordWebSocketConnection(userId, false);
+            }
+            metricsService.recordError("CONNECTION_ERROR", "WebSocketHandler");
             sendError(wsSession, "Connection failed: " + e.getMessage());
             wsSession.close(CloseStatus.SERVER_ERROR);
         }
@@ -91,6 +127,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sessionId = extractSessionId(wsSession);
             log.warn("Session not found in manager for WebSocket: {}, using fallback", wsSession.getId());
         }
+
+        // Record message received
+        metricsService.recordMessageReceived("text");
 
         try {
             String payload = message.getPayload();
@@ -126,6 +165,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         } catch (Exception e) {
             log.error("Error handling message: sessionId={}", sessionId, e);
+            metricsService.recordError("MESSAGE_PROCESSING_ERROR", "WebSocketHandler");
             sendError(wsSession, "Message processing failed");
         }
     }
@@ -148,6 +188,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             log.info("Recovery requested: sessionId={}, messageId={}, lastChunk={}",
                     sessionId, messageId, lastChunkIndex);
 
+            metricsService.recordRecoveryAttempt(false); // Will update to true if successful
             RecoveryResponse recovery = recoveryService.recoverStream(recoveryRequest);
 
             switch (recovery.getStatus()) {
@@ -165,6 +206,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                         );
                     }
 
+                    metricsService.recordRecoveryAttempt(true);
                     sendRecoveryStatus(wsSession, "recovered", recovery.getMissingChunks().size());
                     break;
 
@@ -209,6 +251,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         log.info("WebSocket closed: wsId={}, sessionId={}, status={}",
                 wsSession.getId(), sessionId, status);
 
+        // Record disconnection
+        String userId = extractUserId(wsSession);
+        metricsService.recordWebSocketDisconnection(userId);
+
         // Legacy cleanup
         ConcurrentHashMap<String, WebSocketSession> sessions = sessionMap.get(sessionId);
         if (sessions != null) {
@@ -231,6 +277,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         String sessionId = sessionManager.getSessionId(wsSession);
         log.error("WebSocket transport error: wsId={}, sessionId={}",
                 wsSession.getId(), sessionId, exception);
+
+        // Record error
+        metricsService.recordError("TRANSPORT_ERROR", "WebSocketHandler");
 
         if (sessionId != null) {
             sessionManager.markSessionError(sessionId);
@@ -392,6 +441,22 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             }
         }
         return "default_user";
+    }
+
+    private String extractToken(WebSocketSession session) {
+        // Extract from query params
+        String query = session.getUri().getQuery();
+        if (query != null && query.contains("token=")) {
+            String[] params = query.split("&");
+            for (String param : params) {
+                if (param.startsWith("token=")) {
+                    return param.substring("token=".length());
+                }
+            }
+        }
+        // For development/testing, allow without token
+        log.warn("No token provided, using development mode");
+        return "dev-token";
     }
 
     /**
