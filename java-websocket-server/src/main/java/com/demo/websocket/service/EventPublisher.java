@@ -35,13 +35,13 @@ public class EventPublisher {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final MetricsService metricsService;
 
-    @Value("${kafka.topics.chat-events:chat-events}")
+    @Value("${spring.kafka.topics.chat-events:chat-events}")
     private String chatEventsTopic;
 
-    @Value("${kafka.topics.stream-events:stream-events}")
+    @Value("${spring.kafka.topics.stream-events:stream-events}")
     private String streamEventsTopic;
 
-    @Value("${kafka.enabled:false}")
+    @Value("${spring.kafka.enabled:false}")
     private boolean kafkaEnabled;
 
     public EventPublisher(KafkaTemplate<String, Object> kafkaTemplate, MetricsService metricsService) {
