@@ -84,16 +84,29 @@ public class ChatOrchestrator {
      * Subscribe to legacy chat:stream channel and convert messages
      */
     private void subscribeToLegacyChannel(String channel, StreamingContext context) {
+        log.info("=== SUBSCRIBING TO CHANNEL: {} ===", channel);
+        log.info("ListenerContainer status - isRunning: {}, isActive: {}",
+                listenerContainer.isRunning(), listenerContainer.isActive());
+
         MessageListener listener = (message, pattern) -> {
             try {
                 String body = new String(message.getBody());
-                log.info("ChatOrchestrator received message from {}: {}", channel, body.substring(0, Math.min(100, body.length())));
-                
+                log.info("=== RECEIVED MESSAGE FROM REDIS ===");
+                log.info("Channel: {}", channel);
+                log.info("Message body (first 200 chars): {}", body.substring(0, Math.min(200, body.length())));
+                log.info("Full message length: {}", body.length());
+
                 ChatMessage chatMessage = objectMapper.readValue(body, ChatMessage.class);
+                log.info("Parsed ChatMessage: messageId={}, role={}, isComplete={}, contentLength={}",
+                        chatMessage.getMessageId(), chatMessage.getRole(),
+                        chatMessage.getIsComplete(),
+                        chatMessage.getContent() != null ? chatMessage.getContent().length() : 0);
+
                 handleLegacyMessage(chatMessage, context);
+                log.info("=== MESSAGE PROCESSED SUCCESSFULLY ===");
 
             } catch (Exception e) {
-                log.error("Error processing legacy message from channel: {}", channel, e);
+                log.error("=== ERROR PROCESSING MESSAGE FROM CHANNEL: {} ===", channel, e);
                 context.callback.onError(e);
             }
         };
@@ -101,7 +114,10 @@ public class ChatOrchestrator {
         ChannelTopic topic = new ChannelTopic(channel);
         listenerContainer.addMessageListener(listener, topic);
 
-        log.info("Subscribed to legacy channel: {} with listener", channel);
+        log.info("=== SUBSCRIPTION COMPLETE ===");
+        log.info("Channel: {}", channel);
+        log.info("Listener added to container");
+        log.info("Active message listeners count: {}", listenerContainer.getMessageListeners().size());
     }
 
     /**
@@ -110,13 +126,17 @@ public class ChatOrchestrator {
     private void handleLegacyMessage(ChatMessage chatMessage, StreamingContext context) {
         ChatSession session = context.session;
 
-        log.info("Handling legacy message for session {}: role={}, isComplete={}, contentLength={}", 
-                session.getSessionId(), chatMessage.getRole(), 
-                chatMessage.getIsComplete(), 
-                chatMessage.getContent() != null ? chatMessage.getContent().length() : 0);
+        log.info("=== HANDLING LEGACY MESSAGE ===");
+        log.info("SessionId: {}", session.getSessionId());
+        log.info("MessageId: {}", session.getMessageId());
+        log.info("Role: {}", chatMessage.getRole());
+        log.info("IsComplete: {}", chatMessage.getIsComplete());
+        log.info("ContentLength: {}", chatMessage.getContent() != null ? chatMessage.getContent().length() : 0);
+        log.info("ChunkIndex: {}", context.chunkIndex.get());
 
         // Update session status
         if (session.getStatus() == ChatSession.SessionStatus.INITIALIZING) {
+            log.info("Updating session status from INITIALIZING to STREAMING");
             session.setStatus(ChatSession.SessionStatus.STREAMING);
             streamCache.updateSession(session);
         }
@@ -132,16 +152,23 @@ public class ChatOrchestrator {
                 .timestamp(Instant.now())
                 .build();
 
+        log.info("Created StreamChunk: messageId={}, index={}, contentLength={}",
+                chunk.getMessageId(), chunk.getIndex(),
+                chunk.getContent() != null ? chunk.getContent().length() : 0);
+
         // Append to cache
         streamCache.appendChunk(session.getMessageId(), chunk);
+        log.info("Appended chunk to cache");
 
         // Publish to new PubSub format (for multi-node)
         pubSubPublisher.publishChunk(session.getSessionId(), chunk);
+        log.info("Published chunk to multi-node PubSub");
 
         // Callback - this should send to WebSocket
-        log.info("Calling callback.onChunk for messageId: {}, index: {}", 
-                session.getMessageId(), chunk.getIndex());
+        log.info("=== CALLING WEBSOCKET CALLBACK ===");
+        log.info("Callback type: {}", context.callback.getClass().getName());
         context.callback.onChunk(chunk);
+        log.info("=== CALLBACK COMPLETED ===");
 
         // Update session
         session.setLastActivityTime(Instant.now());
@@ -153,6 +180,8 @@ public class ChatOrchestrator {
             log.info("Message is complete, handling completion");
             handleStreamComplete(chatMessage, context);
         }
+
+        log.info("=== LEGACY MESSAGE HANDLING COMPLETE ===");
     }
 
     /**

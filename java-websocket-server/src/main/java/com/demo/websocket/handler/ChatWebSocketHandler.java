@@ -330,13 +330,24 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private void sendChunk(WebSocketSession wsSession, StreamChunk chunk) {
         try {
+            log.info("=== SENDING CHUNK TO WEBSOCKET ===");
+            log.info("WebSocket Session ID: {}", wsSession.getId());
+            log.info("WebSocket isOpen: {}", wsSession.isOpen());
+            log.info("Chunk index: {}", chunk.getIndex());
+            log.info("Chunk messageId: {}", chunk.getMessageId());
+            log.info("Chunk content length: {}", chunk.getContent() != null ? chunk.getContent().length() : 0);
+
             // Convert StreamChunk to ChatMessage format for frontend compatibility
             String sessionId = sessionManager.getSessionId(wsSession);
             if (sessionId == null) {
                 sessionId = extractSessionId(wsSession);
+                log.info("SessionId from URI: {}", sessionId);
+            } else {
+                log.info("SessionId from manager: {}", sessionId);
             }
             String userId = extractUserId(wsSession);
-            
+            log.info("UserId: {}", userId);
+
             ChatMessage chatMessage = ChatMessage.builder()
                     .messageId(chunk.getMessageId())
                     .sessionId(sessionId)
@@ -347,20 +358,22 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .timestamp(chunk.getTimestamp().toEpochMilli())
                     .isComplete(false)
                     .build();
-            
+
             String payload = objectMapper.writeValueAsString(Map.of(
                     "type", "message",
                     "data", chatMessage
             ));
 
-            log.info("Sending chunk to WebSocket session {}: index={}, contentLength={}", 
-                    wsSession.getId(), chunk.getIndex(), 
-                    chunk.getContent() != null ? chunk.getContent().length() : 0);
-            
+            log.info("Payload size: {} bytes", payload.length());
+            log.info("Payload (first 200 chars): {}", payload.substring(0, Math.min(200, payload.length())));
+
             wsSession.sendMessage(new TextMessage(payload));
 
+            log.info("=== MESSAGE SENT TO WEBSOCKET SUCCESSFULLY ===");
+
         } catch (IOException e) {
-            log.error("Failed to send chunk to session {}", wsSession.getId(), e);
+            log.error("=== FAILED TO SEND CHUNK TO WEBSOCKET ===", e);
+            log.error("WebSocket session: {}", wsSession.getId());
         }
     }
 
@@ -520,20 +533,34 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         WebSocketStreamCallback(WebSocketSession wsSession) {
             this.wsSession = wsSession;
+            log.info("Created WebSocketStreamCallback for wsSession: {}", wsSession.getId());
         }
 
         @Override
         public void onChunk(StreamChunk chunk) {
+            log.info("=== WEBSOCKET CALLBACK onChunk INVOKED ===");
+            log.info("WebSocket Session ID: {}", wsSession.getId());
+            log.info("WebSocket isOpen: {}", wsSession.isOpen());
+            log.info("Chunk messageId: {}, index: {}, contentLength: {}",
+                    chunk.getMessageId(), chunk.getIndex(),
+                    chunk.getContent() != null ? chunk.getContent().length() : 0);
             sendChunk(wsSession, chunk);
+            log.info("=== sendChunk COMPLETED ===");
         }
 
         @Override
         public void onComplete(Message message) {
+            log.info("=== WEBSOCKET CALLBACK onComplete INVOKED ===");
+            log.info("WebSocket Session ID: {}", wsSession.getId());
+            log.info("Message ID: {}", message.getId());
             sendCompleteMessage(wsSession, message);
+            log.info("=== sendCompleteMessage COMPLETED ===");
         }
 
         @Override
         public void onError(Throwable error) {
+            log.error("=== WEBSOCKET CALLBACK onError INVOKED ===", error);
+            log.error("WebSocket Session ID: {}", wsSession.getId());
             sendError(wsSession, error.getMessage());
         }
     }

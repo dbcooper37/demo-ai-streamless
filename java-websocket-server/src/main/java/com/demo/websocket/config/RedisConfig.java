@@ -57,11 +57,11 @@ public class RedisConfig {
 
     @Bean
     public RedisMessageListenerContainer redisMessageListenerContainer(
-            RedisConnectionFactory connectionFactory,
-            RedisMessageListener messageListener) {
+            RedisConnectionFactory connectionFactory) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        // Dynamic subscription will be handled by the listener
+        // Dynamic subscription will be handled by ChatOrchestrator
+        // Container will auto-start when Spring initializes the bean
         return container;
     }
 

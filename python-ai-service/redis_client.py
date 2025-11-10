@@ -60,11 +60,29 @@ class RedisClient:
         try:
             channel = f"chat:stream:{session_id}"
             payload = message.model_dump_json()
+
+            logger.info("=== PUBLISHING TO REDIS ===")
+            logger.info(f"Channel: {channel}")
+            logger.info(f"Message ID: {message.message_id}")
+            logger.info(f"Role: {message.role}")
+            logger.info(f"Is Complete: {message.is_complete}")
+            logger.info(f"Content Length: {len(message.content)}")
+            logger.info(f"Chunk: {message.chunk}")
+            logger.info(f"Payload size: {len(payload)} bytes")
+            logger.info(f"Payload (first 200 chars): {payload[:200]}")
+
             result = self.client.publish(channel, payload)
-            logger.info(f"Published to {channel}: role={message.role}, is_complete={message.is_complete}, content_len={len(message.content)}, subscribers={result}")
+
+            logger.info(f"=== PUBLISH RESULT ===")
+            logger.info(f"Subscribers received: {result}")
+            if result == 0:
+                logger.warning(f"WARNING: No subscribers listening to channel {channel}!")
+            logger.info("=== PUBLISH COMPLETE ===")
+
             return True
         except RedisError as e:
-            logger.error(f"Failed to publish message: {e}")
+            logger.error(f"=== FAILED TO PUBLISH MESSAGE ===")
+            logger.error(f"Error: {e}")
             return False
     
     def save_to_history(self, session_id: str, message: ChatMessage) -> bool:
