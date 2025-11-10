@@ -4,6 +4,7 @@ import com.demo.websocket.handler.ChatWebSocketHandler;
 import com.demo.websocket.model.ChatMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.listener.ChannelTopic;
@@ -24,7 +25,7 @@ public class RedisMessageListener implements MessageListener {
     private ChatWebSocketHandler webSocketHandler;
 
     public RedisMessageListener(ObjectMapper objectMapper,
-                                RedisMessageListenerContainer listenerContainer) {
+                                @Lazy RedisMessageListenerContainer listenerContainer) {
         this.objectMapper = objectMapper;
         this.listenerContainer = listenerContainer;
     }
