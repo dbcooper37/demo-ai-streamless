@@ -60,9 +60,7 @@ public class RedisConfig {
             RedisConnectionFactory connectionFactory) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        // Explicitly start the container to ensure it's listening
-        container.afterPropertiesSet();
-        container.start();
+        // Spring will automatically call afterPropertiesSet() and start the container
         // Dynamic subscription will be handled by ChatOrchestrator
         return container;
     }
