@@ -69,7 +69,8 @@ public class RedisMessageListener implements MessageListener {
             String channel = new String(message.getChannel());
             String body = new String(message.getBody());
 
-            log.debug("Received message from Redis channel {}: {}", channel, body);
+            log.info("RedisMessageListener received message from channel {}: {}", 
+                    channel, body.substring(0, Math.min(100, body.length())));
 
             // Parse message
             ChatMessage chatMessage = objectMapper.readValue(body, ChatMessage.class);
@@ -79,7 +80,10 @@ public class RedisMessageListener implements MessageListener {
 
             // Broadcast to WebSocket clients
             if (webSocketHandler != null) {
+                log.info("Broadcasting to session {} via webSocketHandler", sessionId);
                 webSocketHandler.broadcastToSession(sessionId, chatMessage);
+            } else {
+                log.warn("WebSocketHandler is null, cannot broadcast message to session {}", sessionId);
             }
 
         } catch (Exception e) {

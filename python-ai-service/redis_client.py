@@ -60,8 +60,8 @@ class RedisClient:
         try:
             channel = f"chat:stream:{session_id}"
             payload = message.model_dump_json()
-            self.client.publish(channel, payload)
-            logger.debug(f"Published message to {channel}")
+            result = self.client.publish(channel, payload)
+            logger.info(f"Published to {channel}: role={message.role}, is_complete={message.is_complete}, content_len={len(message.content)}, subscribers={result}")
             return True
         except RedisError as e:
             logger.error(f"Failed to publish message: {e}")

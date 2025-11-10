@@ -21,8 +21,8 @@ class Settings:
     
     # Chat Configuration
     CHAT_HISTORY_TTL: int = int(os.getenv("CHAT_HISTORY_TTL", "86400"))  # 24 hours
-    STREAM_DELAY: float = float(os.getenv("STREAM_DELAY", "0.1"))  # seconds
-    CHUNK_DELAY: float = float(os.getenv("CHUNK_DELAY", "0.05"))  # seconds
+    STREAM_DELAY: float = float(os.getenv("STREAM_DELAY", "0.3"))  # seconds between words
+    CHUNK_DELAY: float = float(os.getenv("CHUNK_DELAY", "0.1"))  # seconds after publishing
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

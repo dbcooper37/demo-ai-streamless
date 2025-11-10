@@ -87,8 +87,9 @@ public class ChatOrchestrator {
         MessageListener listener = (message, pattern) -> {
             try {
                 String body = new String(message.getBody());
+                log.info("ChatOrchestrator received message from {}: {}", channel, body.substring(0, Math.min(100, body.length())));
+                
                 ChatMessage chatMessage = objectMapper.readValue(body, ChatMessage.class);
-
                 handleLegacyMessage(chatMessage, context);
 
             } catch (Exception e) {
@@ -100,7 +101,7 @@ public class ChatOrchestrator {
         ChannelTopic topic = new ChannelTopic(channel);
         listenerContainer.addMessageListener(listener, topic);
 
-        log.info("Subscribed to legacy channel: {}", channel);
+        log.info("Subscribed to legacy channel: {} with listener", channel);
     }
 
     /**
@@ -109,17 +110,24 @@ public class ChatOrchestrator {
     private void handleLegacyMessage(ChatMessage chatMessage, StreamingContext context) {
         ChatSession session = context.session;
 
+        log.info("Handling legacy message for session {}: role={}, isComplete={}, contentLength={}", 
+                session.getSessionId(), chatMessage.getRole(), 
+                chatMessage.getIsComplete(), 
+                chatMessage.getContent() != null ? chatMessage.getContent().length() : 0);
+
         // Update session status
         if (session.getStatus() == ChatSession.SessionStatus.INITIALIZING) {
             session.setStatus(ChatSession.SessionStatus.STREAMING);
             streamCache.updateSession(session);
         }
 
-        // Create stream chunk
+        // Create stream chunk with accumulated content (not just the chunk)
+        // Python sends: content = accumulated_content, chunk = current_word
+        // We want to use accumulated content for display
         StreamChunk chunk = StreamChunk.builder()
                 .messageId(session.getMessageId())
                 .index(context.chunkIndex.getAndIncrement())
-                .content(chatMessage.getChunk() != null ? chatMessage.getChunk() : chatMessage.getContent())
+                .content(chatMessage.getContent()) // Use accumulated content, not just the chunk
                 .type(StreamChunk.ChunkType.TEXT)
                 .timestamp(Instant.now())
                 .build();
@@ -130,7 +138,9 @@ public class ChatOrchestrator {
         // Publish to new PubSub format (for multi-node)
         pubSubPublisher.publishChunk(session.getSessionId(), chunk);
 
-        // Callback
+        // Callback - this should send to WebSocket
+        log.info("Calling callback.onChunk for messageId: {}, index: {}", 
+                session.getMessageId(), chunk.getIndex());
         context.callback.onChunk(chunk);
 
         // Update session
@@ -140,6 +150,7 @@ public class ChatOrchestrator {
 
         // Check if complete
         if (chatMessage.getIsComplete() != null && chatMessage.getIsComplete()) {
+            log.info("Message is complete, handling completion");
             handleStreamComplete(chatMessage, context);
         }
     }

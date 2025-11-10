@@ -95,15 +95,20 @@ class ChatService:
         """
         message_id = str(uuid.uuid4())
         
+        logger.info(f"Starting AI response streaming for session={session_id}, msg_id={message_id}")
+        
         # Select response based on user message
         response_text = AIService.select_response(user_message)
+        logger.info(f"Selected response text (length={len(response_text)}): {response_text[:50]}...")
         
         accumulated_content = ""
+        chunk_count = 0
         
         try:
             # Stream response word by word
             async for chunk in AIService.generate_streaming_response(response_text):
                 accumulated_content += chunk
+                chunk_count += 1
                 
                 # Create streaming message
                 stream_message = ChatMessage.create_assistant_message(
@@ -116,7 +121,8 @@ class ChatService:
                 )
                 
                 # Publish to Redis PubSub
-                redis_client.publish_message(session_id, stream_message)
+                published = redis_client.publish_message(session_id, stream_message)
+                logger.debug(f"Published chunk #{chunk_count} to Redis: chunk='{chunk}', accumulated_length={len(accumulated_content)}, published={published}")
                 
                 await asyncio.sleep(settings.CHUNK_DELAY)
             
@@ -130,12 +136,13 @@ class ChatService:
             )
             
             # Publish final message
-            redis_client.publish_message(session_id, final_message)
+            published = redis_client.publish_message(session_id, final_message)
+            logger.info(f"Published final complete message: published={published}")
             
             # Save to history
             redis_client.save_to_history(session_id, final_message)
             
-            logger.info(f"Completed AI response streaming: session={session_id}, msg_id={message_id}")
+            logger.info(f"Completed AI response streaming: session={session_id}, msg_id={message_id}, chunks={chunk_count}, total_length={len(accumulated_content)}")
             
         except Exception as e:
             logger.error(f"Error during streaming: {e}")
