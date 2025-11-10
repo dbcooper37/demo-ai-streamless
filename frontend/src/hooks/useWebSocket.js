@@ -14,6 +14,12 @@ export const useWebSocket = (url, sessionId, onMessage) => {
   const reconnectTimeoutRef = useRef(null);
   const pingIntervalRef = useRef(null);
   const manualDisconnectRef = useRef(false);
+  const onMessageRef = useRef(onMessage);
+
+  // Update the ref when onMessage changes
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   const connect = useCallback(() => {
     // Reset manual disconnect flag when connecting
@@ -38,7 +44,7 @@ export const useWebSocket = (url, sessionId, onMessage) => {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          onMessage(data);
+          onMessageRef.current(data);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
         }
@@ -77,12 +83,9 @@ export const useWebSocket = (url, sessionId, onMessage) => {
       console.error('Error creating WebSocket:', error);
       setConnectionStatus('error');
     }
-  }, [url, sessionId, onMessage]);
+  }, [url, sessionId]);
 
-  const disconnect = useCallback(() => {
-    // Set manual disconnect flag
-    manualDisconnectRef.current = true;
-
+  const cleanup = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -97,14 +100,22 @@ export const useWebSocket = (url, sessionId, onMessage) => {
       wsRef.current.close();
       wsRef.current = null;
     }
-
-    console.log('WebSocket manually disconnected');
   }, []);
+
+  const disconnect = useCallback(() => {
+    // Set manual disconnect flag
+    manualDisconnectRef.current = true;
+    cleanup();
+    console.log('WebSocket manually disconnected');
+  }, [cleanup]);
 
   useEffect(() => {
     connect();
-    return () => disconnect();
-  }, [connect, disconnect]);
+    return () => {
+      // Cleanup without setting manual disconnect flag
+      cleanup();
+    };
+  }, [connect, cleanup]);
 
   return {
     isConnected,
