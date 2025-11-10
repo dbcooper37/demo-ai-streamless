@@ -6,6 +6,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -41,7 +42,7 @@ public class HierarchicalCacheManager {
     private final ScheduledExecutorService statsExecutor;
 
     public HierarchicalCacheManager(
-            RedisTemplate<String, ChatSession> redisTemplate,
+            @Qualifier("sessionRedisTemplate") RedisTemplate<String, ChatSession> redisTemplate,
             ChatSessionRepository chatSessionRepository,
             MetricsService metricsService) {
         this.redisTemplate = redisTemplate;
