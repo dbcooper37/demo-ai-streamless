@@ -1,0 +1,60 @@
+# Prometheus Configuration for AI Streaming Chat
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Rule files (optional)
+# rule_files:
+#   - "alerts/*.yml"
+
+scrape_configs:
+  # Java WebSocket Server (Spring Boot Actuator)
+  - job_name: 'java-websocket-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['java-websocket:8080']
+        labels:
+          service: 'websocket-server'
+          environment: 'production'
+    scrape_interval: 10s
+
+  # Python AI Service (if you add prometheus_client)
+  - job_name: 'python-ai-service'
+    static_configs:
+      - targets: ['python-ai:8000']
+        labels:
+          service: 'ai-service'
+          environment: 'production'
+    scrape_interval: 15s
+
+  # Redis Exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+          environment: 'production'
+    scrape_interval: 15s
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Kafka JMX Metrics (optional - requires JMX exporter)
+  # - job_name: 'kafka'
+  #   static_configs:
+  #     - targets: ['kafka-jmx-exporter:7071']
+  #       labels:
+  #         service: 'kafka'
