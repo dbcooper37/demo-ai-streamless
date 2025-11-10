@@ -82,10 +82,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sessionManager.registerSession(sessionId, wsSession, userId);
 
             // Subscribe to Redis PubSub for this session (legacy support)
-            redisMessageListener.subscribe(sessionId, this);
+            // NOTE: Commented out to avoid duplicate messages with ChatOrchestrator
+            // ChatOrchestrator handles both legacy and enhanced streaming
+            // redisMessageListener.subscribe(sessionId, this);
 
-            log.info("WebSocket connected: wsId={}, sessionId={}, userId={}",
+            log.info("WebSocket connected: wsId={}, sessionId={}, userId={}", 
                     wsSession.getId(), sessionId, userId);
+            log.info("Session map now contains: {}", sessionMap.keySet());
 
             // Record metrics
             metricsService.recordWebSocketConnection(userId, true);
@@ -97,6 +100,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sendChatHistory(wsSession, sessionId);
 
             // Start streaming session with enhanced orchestrator
+            // This will handle Redis PubSub subscription internally
             chatOrchestrator.startStreamingSession(sessionId, userId,
                     new WebSocketStreamCallback(wsSession));
 
@@ -262,7 +266,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             if (sessions.isEmpty()) {
                 sessionMap.remove(sessionId);
                 // Unsubscribe from Redis if no more connections for this session
-                redisMessageListener.unsubscribe(sessionId);
+                // NOTE: Commented out because we're not using RedisMessageListener subscription
+                // redisMessageListener.unsubscribe(sessionId);
             }
         }
 
@@ -325,25 +330,66 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private void sendChunk(WebSocketSession wsSession, StreamChunk chunk) {
         try {
+            // Convert StreamChunk to ChatMessage format for frontend compatibility
+            String sessionId = sessionManager.getSessionId(wsSession);
+            if (sessionId == null) {
+                sessionId = extractSessionId(wsSession);
+            }
+            String userId = extractUserId(wsSession);
+            
+            ChatMessage chatMessage = ChatMessage.builder()
+                    .messageId(chunk.getMessageId())
+                    .sessionId(sessionId)
+                    .userId(userId)
+                    .role("assistant")
+                    .content(chunk.getContent())
+                    .chunk(chunk.getContent())
+                    .timestamp(chunk.getTimestamp().toEpochMilli())
+                    .isComplete(false)
+                    .build();
+            
             String payload = objectMapper.writeValueAsString(Map.of(
-                    "type", "chunk",
-                    "data", chunk
+                    "type", "message",
+                    "data", chatMessage
             ));
 
+            log.info("Sending chunk to WebSocket session {}: index={}, contentLength={}", 
+                    wsSession.getId(), chunk.getIndex(), 
+                    chunk.getContent() != null ? chunk.getContent().length() : 0);
+            
             wsSession.sendMessage(new TextMessage(payload));
 
         } catch (IOException e) {
-            log.error("Failed to send chunk", e);
+            log.error("Failed to send chunk to session {}", wsSession.getId(), e);
         }
     }
 
     private void sendCompleteMessage(WebSocketSession wsSession, Message message) {
         try {
+            // Convert Message to ChatMessage format for frontend compatibility
+            String sessionId = sessionManager.getSessionId(wsSession);
+            if (sessionId == null) {
+                sessionId = extractSessionId(wsSession);
+            }
+            
+            ChatMessage chatMessage = ChatMessage.builder()
+                    .messageId(message.getId())
+                    .sessionId(sessionId)
+                    .userId(message.getUserId())
+                    .role(message.getRole().name().toLowerCase())
+                    .content(message.getContent())
+                    .timestamp(message.getCreatedAt().toEpochMilli())
+                    .isComplete(true)
+                    .build();
+            
             String payload = objectMapper.writeValueAsString(Map.of(
-                    "type", "complete",
-                    "data", message
+                    "type", "message",
+                    "data", chatMessage
             ));
 
+            log.info("Sending complete message to session {}: messageId={}", 
+                    wsSession.getId(), message.getId());
+            
             wsSession.sendMessage(new TextMessage(payload));
 
         } catch (IOException e) {
@@ -387,7 +433,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     public void broadcastToSession(String sessionId, ChatMessage message) {
         ConcurrentHashMap<String, WebSocketSession> sessions = sessionMap.get(sessionId);
         if (sessions == null || sessions.isEmpty()) {
-            log.debug("No active WebSocket sessions for chat session: {}", sessionId);
+            log.warn("No active WebSocket sessions for chat session: {}", sessionId);
+            log.warn("Available sessions: {}", sessionMap.keySet());
             return;
         }
 
@@ -402,10 +449,16 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        log.info("Broadcasting to {} WebSocket sessions for chat session {}", 
+                sessions.size(), sessionId);
+        
         sessions.values().forEach(session -> {
             try {
                 if (session.isOpen()) {
+                    log.info("Sending message to WebSocket session: {}", session.getId());
                     session.sendMessage(new TextMessage(messageJson));
+                } else {
+                    log.warn("WebSocket session {} is not open", session.getId());
                 }
             } catch (IOException e) {
                 log.error("Error sending message to WebSocket session {}: {}",
@@ -413,7 +466,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             }
         });
 
-        log.debug("Broadcasted message to {} WebSocket sessions for chat session {}",
+        log.info("Broadcasted message to {} WebSocket sessions for chat session {}",
                  sessions.size(), sessionId);
     }
 
