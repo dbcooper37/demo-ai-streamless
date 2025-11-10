@@ -200,7 +200,7 @@ public class StreamCoordinator {
         try {
             // Get session from cache
             ChatSession session = cacheManager.get(sessionId)
-                .orElseGet(() -> streamCache.getSession(sessionId));
+                .orElseGet(() -> streamCache.getSession(sessionId).orElse(null));
 
             if (session == null) {
                 log.warn("Session not found for recovery: sessionId={}", sessionId);
@@ -209,7 +209,8 @@ public class StreamCoordinator {
             }
 
             // Get chunks from cache
-            List<StreamChunk> chunks = streamCache.getChunks(session.getMessageId(), fromIndex);
+            int totalChunks = session.getTotalChunks();
+            List<StreamChunk> chunks = streamCache.getChunks(session.getMessageId(), fromIndex, totalChunks);
             
             metricsService.recordRecoveryAttempt(true);
             log.info("Stream recovered: sessionId={}, chunks={}", sessionId, chunks.size());

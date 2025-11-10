@@ -128,6 +128,9 @@ public class SimpleDistributedLockService {
         
         try {
             return operation.execute();
+        } catch (Exception e) {
+            log.error("❌ Error executing operation with lock: key={}", key, e);
+            throw new RuntimeException("Failed to execute operation with lock", e);
         } finally {
             unlock(key, token);
         }

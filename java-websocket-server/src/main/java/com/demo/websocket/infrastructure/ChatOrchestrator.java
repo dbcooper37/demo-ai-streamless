@@ -139,7 +139,7 @@ public class ChatOrchestrator {
         streamCache.updateSession(session);
 
         // Check if complete
-        if (chatMessage.getIs_complete() != null && chatMessage.getIs_complete()) {
+        if (chatMessage.getIsComplete() != null && chatMessage.getIsComplete()) {
             handleStreamComplete(chatMessage, context);
         }
     }

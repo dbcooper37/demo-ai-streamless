@@ -9,6 +9,7 @@ import io.micrometer.core.instrument.Tags;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -68,26 +69,21 @@ public class RecoveryService {
 
         try {
             // Acquire distributed lock to avoid race conditions
-            RLock lock = redissonClient.getLock("recovery:lock:" + sessionId);
+            String lockKey = "recovery:lock:" + sessionId;
+            RecoveryResponse response = lockService.executeWithLock(
+                lockKey,
+                Duration.ofSeconds(30),
+                () -> executeRecovery(request, recoveryStart)
+            );
 
-            try {
-                // Try lock with timeout
-                if (lock.tryLock(5, 30, TimeUnit.SECONDS)) {
-                    try {
-                        return executeRecovery(request, recoveryStart);
-                    } finally {
-                        lock.unlock();
-                    }
-                } else {
-                    log.warn("Failed to acquire recovery lock: sessionId={}", sessionId);
-                    return RecoveryResponse.builder()
-                        .status(RecoveryResponse.RecoveryStatus.ERROR)
-                        .build();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RecoveryException("Interrupted during recovery", e);
+            if (response == null) {
+                log.warn("Failed to acquire recovery lock: sessionId={}", sessionId);
+                return RecoveryResponse.builder()
+                    .status(RecoveryResponse.RecoveryStatus.ERROR)
+                    .build();
             }
+
+            return response;
 
         } catch (Exception e) {
             log.error("Recovery failed: sessionId={}, messageId={}", sessionId, messageId, e);
