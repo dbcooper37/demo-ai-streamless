@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import settings
-from models import ChatRequest, ChatResponse, HistoryResponse, HealthResponse
+from models import ChatRequest, ChatResponse, CancelRequest, HistoryResponse, HealthResponse
 from redis_client import redis_client
 from ai_service import chat_service
 
@@ -224,6 +224,37 @@ async def clear_history(session_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear history: {str(e)}"
+        )
+
+
+@app.post("/cancel", tags=["Chat"])
+async def cancel_message(request: CancelRequest):
+    """
+    Cancel an ongoing streaming message
+    
+    Stops the AI from generating more content for the specified message.
+    """
+    try:
+        success = chat_service.cancel_streaming(request.session_id, request.message_id)
+        
+        if not success:
+            return {
+                "status": "not_found",
+                "message": "No active streaming task found for this session/message"
+            }
+        
+        return {
+            "status": "cancelled",
+            "message": "Streaming cancelled successfully",
+            "session_id": request.session_id,
+            "message_id": request.message_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cancelling message: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel message: {str(e)}"
         )
 
 

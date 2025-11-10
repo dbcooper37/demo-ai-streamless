@@ -62,6 +62,8 @@ class ChatService:
     
     def __init__(self):
         self.ai_service = AIService()
+        # Track active streaming tasks for cancellation
+        self.active_tasks = {}  # session_id -> {"task": Task, "message_id": str, "cancelled": bool}
     
     async def process_user_message(self, session_id: str, user_id: str, 
                                    message_content: str) -> str:
@@ -89,11 +91,18 @@ class ChatService:
         return message_id
     
     async def stream_ai_response(self, session_id: str, user_id: str, 
-                                 user_message: str) -> None:
+                                 user_message: str) -> str:
         """
         Stream AI response chunk by chunk
+        Returns the message_id for tracking
         """
         message_id = str(uuid.uuid4())
+        
+        # Track this streaming task
+        self.active_tasks[session_id] = {
+            "message_id": message_id,
+            "cancelled": False
+        }
         
         logger.info(f"Starting AI response streaming for session={session_id}, msg_id={message_id}")
         
@@ -103,10 +112,17 @@ class ChatService:
         
         accumulated_content = ""
         chunk_count = 0
+        cancelled = False
         
         try:
             # Stream response word by word
             async for chunk in AIService.generate_streaming_response(response_text):
+                # Check if cancelled
+                if self.active_tasks.get(session_id, {}).get("cancelled", False):
+                    logger.info(f"Streaming cancelled for session={session_id}, msg_id={message_id}")
+                    cancelled = True
+                    break
+                
                 accumulated_content += chunk
                 chunk_count += 1
                 
@@ -126,24 +142,50 @@ class ChatService:
                 
                 await asyncio.sleep(settings.CHUNK_DELAY)
             
-            # Send final complete message
-            final_message = ChatMessage.create_assistant_message(
+            if cancelled:
+                # Send cancellation message
+                cancel_message = ChatMessage.create_assistant_message(
+                    message_id=message_id,
+                    session_id=session_id,
+                    user_id=user_id,
+                    content=accumulated_content + "\n\n[Đã hủy]",
+                    is_complete=True
+                )
+                redis_client.publish_message(session_id, cancel_message)
+                redis_client.save_to_history(session_id, cancel_message)
+                logger.info(f"Streaming cancelled: session={session_id}, msg_id={message_id}, chunks={chunk_count}")
+            else:
+                # Send final complete message
+                final_message = ChatMessage.create_assistant_message(
+                    message_id=message_id,
+                    session_id=session_id,
+                    user_id=user_id,
+                    content=accumulated_content,
+                    is_complete=True
+                )
+                
+                # Publish final message
+                published = redis_client.publish_message(session_id, final_message)
+                logger.info(f"Published final complete message: published={published}")
+                
+                # Save to history
+                redis_client.save_to_history(session_id, final_message)
+                
+                logger.info(f"Completed AI response streaming: session={session_id}, msg_id={message_id}, chunks={chunk_count}, total_length={len(accumulated_content)}")
+            
+        except asyncio.CancelledError:
+            logger.info(f"Streaming task cancelled externally: session={session_id}, msg_id={message_id}")
+            # Send cancellation message
+            cancel_message = ChatMessage.create_assistant_message(
                 message_id=message_id,
                 session_id=session_id,
                 user_id=user_id,
-                content=accumulated_content,
+                content=accumulated_content + "\n\n[Đã hủy]",
                 is_complete=True
             )
-            
-            # Publish final message
-            published = redis_client.publish_message(session_id, final_message)
-            logger.info(f"Published final complete message: published={published}")
-            
-            # Save to history
-            redis_client.save_to_history(session_id, final_message)
-            
-            logger.info(f"Completed AI response streaming: session={session_id}, msg_id={message_id}, chunks={chunk_count}, total_length={len(accumulated_content)}")
-            
+            redis_client.publish_message(session_id, cancel_message)
+            redis_client.save_to_history(session_id, cancel_message)
+            raise
         except Exception as e:
             logger.error(f"Error during streaming: {e}")
             
@@ -157,6 +199,30 @@ class ChatService:
             )
             redis_client.publish_message(session_id, error_message)
             redis_client.save_to_history(session_id, error_message)
+        finally:
+            # Clean up tracking
+            if session_id in self.active_tasks:
+                del self.active_tasks[session_id]
+        
+        return message_id
+    
+    def cancel_streaming(self, session_id: str, message_id: str) -> bool:
+        """
+        Cancel an active streaming task
+        Returns True if cancellation was successful
+        """
+        if session_id in self.active_tasks:
+            task_info = self.active_tasks[session_id]
+            if task_info["message_id"] == message_id:
+                task_info["cancelled"] = True
+                logger.info(f"Marked streaming for cancellation: session={session_id}, msg_id={message_id}")
+                return True
+            else:
+                logger.warning(f"Message ID mismatch for cancellation: expected={task_info['message_id']}, got={message_id}")
+                return False
+        else:
+            logger.warning(f"No active streaming task found for session={session_id}")
+            return False
 
 
 # Global chat service instance

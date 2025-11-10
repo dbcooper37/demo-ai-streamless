@@ -65,6 +65,20 @@ class ChatMessage(BaseModel):
         )
 
 
+class CancelRequest(BaseModel):
+    """Cancel request from client"""
+    session_id: str = Field(..., description="Session identifier")
+    message_id: str = Field(..., description="Message identifier to cancel")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "session_12345",
+                "message_id": "msg_001"
+            }
+        }
+
+
 class ChatResponse(BaseModel):
     """Response from chat endpoint"""
     status: str

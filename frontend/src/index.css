@@ -470,6 +470,35 @@ body {
   font-size: 16px;
 }
 
+.cancel-button {
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.cancel-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.cancel-button:active {
+  transform: translateY(0);
+}
+
+.cancel-icon {
+  font-size: 16px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .app {
@@ -518,7 +547,8 @@ body {
     flex-direction: column;
   }
 
-  .send-button {
+  .send-button,
+  .cancel-button {
     width: 100%;
     justify-content: center;
   }

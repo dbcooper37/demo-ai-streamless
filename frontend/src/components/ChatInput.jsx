@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
 
-const ChatInput = ({ onSend, isConnected, isSending }) => {
+const ChatInput = ({ onSend, onCancel, isConnected, isSending, isStreaming }) => {
   const [inputMessage, setInputMessage] = useState('');
 
   const handleSend = () => {
-    if (!inputMessage.trim() || isSending || !isConnected) return;
+    if (!inputMessage.trim() || isSending || !isConnected || isStreaming) return;
     
     onSend(inputMessage);
     setInputMessage('');
+  };
+
+  const handleCancel = () => {
+    if (!isStreaming) return;
+    onCancel();
   };
 
   const handleKeyPress = (e) => {
@@ -26,30 +31,43 @@ const ChatInput = ({ onSend, isConnected, isSending }) => {
           placeholder={
             !isConnected 
               ? "Đang kết nối..." 
+              : isStreaming
+              ? "AI đang trả lời..."
               : "Nhập tin nhắn của bạn..."
           }
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyPress={handleKeyPress}
-          disabled={!isConnected || isSending}
+          disabled={!isConnected || isSending || isStreaming}
         />
-        <button
-          className="send-button"
-          onClick={handleSend}
-          disabled={!isConnected || isSending || !inputMessage.trim()}
-        >
-          {isSending ? (
-            <>
-              <span className="button-spinner"></span>
-              Đang gửi...
-            </>
-          ) : (
-            <>
-              <span className="send-icon">📤</span>
-              Gửi
-            </>
-          )}
-        </button>
+        {isStreaming ? (
+          <button
+            className="cancel-button"
+            onClick={handleCancel}
+            title="Hủy tin nhắn đang streaming"
+          >
+            <span className="cancel-icon">⏹️</span>
+            Hủy
+          </button>
+        ) : (
+          <button
+            className="send-button"
+            onClick={handleSend}
+            disabled={!isConnected || isSending || !inputMessage.trim()}
+          >
+            {isSending ? (
+              <>
+                <span className="button-spinner"></span>
+                Đang gửi...
+              </>
+            ) : (
+              <>
+                <span className="send-icon">📤</span>
+                Gửi
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

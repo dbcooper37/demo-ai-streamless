@@ -158,7 +158,7 @@ services:
       - "3000:3000"
     environment:
       - VITE_WS_URL=ws://localhost:8080/ws/chat
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8080/api  # Changed: Now points to Java backend, not Python service directly
     depends_on:
       - python-ai
       - java-websocket

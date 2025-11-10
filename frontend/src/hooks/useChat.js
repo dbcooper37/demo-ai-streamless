@@ -76,10 +76,25 @@ export const useChat = () => {
     streamingMessagesRef.current.clear();
   }, []);
 
+  const addUserMessage = useCallback((messageId, content, sessionId, userId) => {
+    const userMessage = {
+      message_id: messageId,
+      session_id: sessionId,
+      user_id: userId,
+      role: 'user',
+      content: content,
+      timestamp: Date.now(),
+      is_complete: true
+    };
+    
+    setMessages((prev) => [...prev, userMessage]);
+  }, []);
+
   return {
     messages,
     handleStreamingMessage,
     loadHistory,
-    clearMessages
+    clearMessages,
+    addUserMessage
   };
 };
