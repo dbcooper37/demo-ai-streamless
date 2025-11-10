@@ -4,10 +4,12 @@ import com.demo.websocket.domain.*;
 import com.demo.websocket.exception.MessageNotFoundException;
 import com.demo.websocket.exception.RecoveryException;
 import com.demo.websocket.repository.StreamChunkRepository;
+import com.demo.websocket.service.EventPublisher;
 import com.demo.websocket.service.MetricsService;
 import com.demo.websocket.service.SimpleDistributedLockService;
 import io.micrometer.core.instrument.Tags;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,9 @@ public class RecoveryService {
     private final StreamChunkRepository streamChunkRepository;
     private final MetricsService metricsService;
     private final SimpleDistributedLockService lockService;
+    
+    // Optional: Kafka event publisher (null if Kafka is disabled)
+    private final EventPublisher eventPublisher;
 
     @Value("${recovery.session-ttl-minutes:10}")
     private int sessionTtlMinutes;
@@ -41,12 +46,14 @@ public class RecoveryService {
                           MessageRepository messageRepository,
                           StreamChunkRepository streamChunkRepository,
                           MetricsService metricsService,
-                          SimpleDistributedLockService lockService) {
+                          SimpleDistributedLockService lockService,
+                          @Autowired(required = false) EventPublisher eventPublisher) {
         this.streamCache = streamCache;
         this.messageRepository = messageRepository;
         this.streamChunkRepository = streamChunkRepository;
         this.metricsService = metricsService;
         this.lockService = lockService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -251,6 +258,11 @@ public class RecoveryService {
             metricsService.incrementCounter("recovery.streaming.success",
                 Tags.of("chunks", String.valueOf(missingChunks.size())));
 
+            // Publish recovery event to Kafka for analytics (if enabled)
+            if (eventPublisher != null) {
+                eventPublisher.publishRecoveryAttempt(sessionId, fromIndex, true);
+            }
+
             return RecoveryResponse.builder()
                 .status(RecoveryResponse.RecoveryStatus.RECOVERED)
                 .missingChunks(missingChunks)
@@ -262,6 +274,13 @@ public class RecoveryService {
             log.error("Error recovering streaming session: messageId={}", messageId, e);
 
             metricsService.incrementCounter("recovery.streaming.error");
+
+            // Publish failed recovery event to Kafka (if enabled)
+            if (eventPublisher != null) {
+                eventPublisher.publishRecoveryAttempt(sessionId, 
+                    request.getLastChunkIndex() != null ? request.getLastChunkIndex() + 1 : 0, 
+                    false);
+            }
 
             return RecoveryResponse.builder()
                 .status(RecoveryResponse.RecoveryStatus.ERROR)

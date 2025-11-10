@@ -5,7 +5,9 @@ import com.demo.websocket.domain.Message;
 import com.demo.websocket.domain.StreamChunk;
 import com.demo.websocket.domain.StreamMetadata;
 import com.demo.websocket.model.ChatMessage;
+import com.demo.websocket.service.EventPublisher;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
@@ -28,6 +30,9 @@ public class ChatOrchestrator {
     private final RedisPubSubPublisher pubSubPublisher;
     private final RedisMessageListenerContainer listenerContainer;
     private final ObjectMapper objectMapper;
+    
+    // Optional: Kafka event publisher (null if Kafka is disabled)
+    private final EventPublisher eventPublisher;
 
     // Track active streaming sessions
     private final Map<String, StreamingContext> activeStreams = new ConcurrentHashMap<>();
@@ -36,12 +41,20 @@ public class ChatOrchestrator {
                            MessageRepository messageRepository,
                            RedisPubSubPublisher pubSubPublisher,
                            RedisMessageListenerContainer listenerContainer,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           @Autowired(required = false) EventPublisher eventPublisher) {
         this.streamCache = streamCache;
         this.messageRepository = messageRepository;
         this.pubSubPublisher = pubSubPublisher;
         this.listenerContainer = listenerContainer;
         this.objectMapper = objectMapper;
+        this.eventPublisher = eventPublisher;
+        
+        if (eventPublisher != null) {
+            log.info("Kafka EventPublisher enabled for event sourcing and analytics");
+        } else {
+            log.info("Kafka EventPublisher disabled - using Redis PubSub only");
+        }
     }
 
     /**
@@ -72,6 +85,11 @@ public class ChatOrchestrator {
         // Create streaming context
         StreamingContext context = new StreamingContext(session, callback);
         activeStreams.put(sessionId, context);
+
+        // Publish session started event to Kafka (if enabled)
+        if (eventPublisher != null) {
+            eventPublisher.publishSessionStarted(session);
+        }
 
         // Subscribe to legacy Redis PubSub channel
         String legacyChannel = "chat:stream:" + sessionId;
@@ -160,6 +178,11 @@ public class ChatOrchestrator {
         streamCache.appendChunk(session.getMessageId(), chunk);
         log.info("Appended chunk to cache");
 
+        // Publish chunk event to Kafka for analytics (if enabled)
+        if (eventPublisher != null) {
+            eventPublisher.publishChunkReceived(session.getSessionId(), chunk);
+        }
+
         // Publish to new PubSub format (for multi-node)
         pubSubPublisher.publishChunk(session.getSessionId(), chunk);
         log.info("Published chunk to multi-node PubSub");
@@ -216,6 +239,12 @@ public class ChatOrchestrator {
                     .build();
 
             messageRepository.save(message);
+
+            // Publish complete event to Kafka for event sourcing (if enabled)
+            if (eventPublisher != null) {
+                eventPublisher.publishStreamCompleted(session.getSessionId(), message, context.chunkIndex.get());
+                eventPublisher.publishChatMessage(message);
+            }
 
             // Publish complete event
             pubSubPublisher.publishComplete(session.getSessionId(), message);
@@ -283,6 +312,11 @@ public class ChatOrchestrator {
 
         session.setStatus(ChatSession.SessionStatus.ERROR);
         streamCache.updateSession(session);
+
+        // Publish error event to Kafka for monitoring (if enabled)
+        if (eventPublisher != null) {
+            eventPublisher.publishStreamError(session.getSessionId(), session.getMessageId(), error.getMessage());
+        }
 
         // Update message status
         messageRepository.findById(session.getMessageId())

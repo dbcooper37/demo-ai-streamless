@@ -26,7 +26,7 @@ export const useChat = () => {
         setMessages((prev) => {
           const index = prev.findIndex(m => m.message_id === message.message_id);
           if (index >= 0) {
-            // Update existing message
+            // Update existing message with final content
             const updated = [...prev];
             updated[index] = message;
             return updated;
@@ -36,19 +36,28 @@ export const useChat = () => {
           }
         });
       } else {
-        // Streaming chunk
-        streamingMessagesRef.current.set(message.message_id, message);
-
+        // Streaming chunk - accumulate content
         setMessages((prev) => {
           const index = prev.findIndex(m => m.message_id === message.message_id);
           if (index >= 0) {
-            // Update existing streaming message
+            // Append new content to existing message
             const updated = [...prev];
-            updated[index] = message;
+            const existingMessage = updated[index];
+            updated[index] = {
+              ...message,
+              content: (existingMessage.content || '') + (message.chunk || message.content || ''),
+              chunk: message.chunk || message.content || ''
+            };
+            streamingMessagesRef.current.set(message.message_id, updated[index]);
             return updated;
           } else {
-            // Add new streaming message
-            return [...prev, message];
+            // Add new streaming message with initial content
+            const newMessage = {
+              ...message,
+              content: message.chunk || message.content || ''
+            };
+            streamingMessagesRef.current.set(message.message_id, newMessage);
+            return [...prev, newMessage];
           }
         });
       }
