@@ -22,8 +22,21 @@ export const useWebSocket = (url, sessionId, onMessage) => {
   }, [onMessage]);
 
   const connect = useCallback(() => {
+    // Prevent multiple connections
+    if (wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING) {
+      console.log('WebSocket already connected or connecting');
+      return;
+    }
+
     // Reset manual disconnect flag when connecting
     manualDisconnectRef.current = false;
+
+    // Clear any pending reconnection
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
 
     try {
       const ws = new WebSocket(`${url}?session_id=${sessionId}`);
@@ -56,13 +69,18 @@ export const useWebSocket = (url, sessionId, onMessage) => {
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        console.log('WebSocket disconnected', { manual: manualDisconnectRef.current });
         setIsConnected(false);
 
         // Clear ping interval
         if (pingIntervalRef.current) {
           clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = null;
+        }
+
+        // Clear the websocket ref
+        if (wsRef.current === ws) {
+          wsRef.current = null;
         }
 
         // Only auto-reconnect if not manually disconnected
@@ -97,23 +115,35 @@ export const useWebSocket = (url, sessionId, onMessage) => {
     }
 
     if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+      // Close the connection if it's open
+      if (wsRef.current.readyState === WebSocket.OPEN ||
+          wsRef.current.readyState === WebSocket.CONNECTING) {
+        wsRef.current.close();
+      }
+      // Don't set wsRef to null immediately to avoid race conditions
+      // The onclose handler will handle state updates
     }
   }, []);
 
   const disconnect = useCallback(() => {
-    // Set manual disconnect flag
+    console.log('Manual disconnect requested');
+    // Set manual disconnect flag BEFORE calling cleanup
     manualDisconnectRef.current = true;
+
+    // Update status immediately for better UX
+    setConnectionStatus('disconnected');
+
+    // Clean up the connection
     cleanup();
-    console.log('WebSocket manually disconnected');
   }, [cleanup]);
 
   useEffect(() => {
     connect();
     return () => {
-      // Cleanup without setting manual disconnect flag
+      // Cleanup on unmount - don't set manual flag to prevent reconnect attempts
       cleanup();
+      // Clear the ref on unmount
+      wsRef.current = null;
     };
   }, [connect, cleanup]);
 
