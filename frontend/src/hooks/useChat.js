@@ -36,17 +36,19 @@ export const useChat = () => {
           }
         });
       } else {
-        // Streaming chunk - accumulate content
+        // Streaming chunk - use accumulated content from server
+        // NOTE: The server (Python AI service and ChatOrchestrator) already sends
+        // accumulated content in the 'content' field. We should NOT accumulate again
+        // on the client side to avoid duplicate/overlapping text.
         setMessages((prev) => {
           const index = prev.findIndex(m => m.message_id === message.message_id);
           if (index >= 0) {
-            // Append new content to existing message
+            // Update message with latest accumulated content from server
             const updated = [...prev];
-            const existingMessage = updated[index];
             updated[index] = {
               ...message,
-              content: (existingMessage.content || '') + (message.chunk || message.content || ''),
-              chunk: message.chunk || message.content || ''
+              content: message.content || '',
+              chunk: message.chunk || ''
             };
             streamingMessagesRef.current.set(message.message_id, updated[index]);
             return updated;
@@ -54,7 +56,8 @@ export const useChat = () => {
             // Add new streaming message with initial content
             const newMessage = {
               ...message,
-              content: message.chunk || message.content || ''
+              content: message.content || '',
+              chunk: message.chunk || ''
             };
             streamingMessagesRef.current.set(message.message_id, newMessage);
             return [...prev, newMessage];

@@ -110,8 +110,8 @@ services:
       - SPRING_DATA_REDIS_PORT=6379
       
       # Kafka Configuration
-      - KAFKA_ENABLED=true
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_KAFKA_ENABLED=true
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       
       # Security
       - JWT_SECRET=${JWT_SECRET:-default-secret-key-change-in-production-minimum-256-bits-required}
