@@ -89,7 +89,7 @@ public class AnalyticsConsumer {
         int contentLength = ((Number) event.get("contentLength")).intValue();
         
         // Record chunk size distribution
-        metricsService.recordHistogram("analytics.chunk.size", contentLength);
+        metricsService.recordDistribution("analytics.chunk.size", contentLength);
         
         // Track chunk rate (chunks per second)
         metricsService.incrementCounter("analytics.chunks.received");
@@ -113,15 +113,15 @@ public class AnalyticsConsumer {
             
             // Calculate words per second
             double wordsPerSecond = (contentLength / 5.0) / streamingDuration.getSeconds();
-            metricsService.recordGauge("analytics.stream.words_per_second", wordsPerSecond);
+            metricsService.recordDistribution("analytics.stream.words_per_second", (long) wordsPerSecond);
             
             log.info("Stream completed metrics: sessionId={}, duration={}ms, chunks={}, words/s={}", 
                 sessionId, streamingDuration.toMillis(), totalChunks, wordsPerSecond);
         }
         
         // Record message length distribution
-        metricsService.recordHistogram("analytics.message.length", contentLength);
-        metricsService.recordHistogram("analytics.message.chunks", totalChunks);
+        metricsService.recordDistribution("analytics.message.length", contentLength);
+        metricsService.recordDistribution("analytics.message.chunks", totalChunks);
         
         // Increment completion counter
         metricsService.incrementCounter("analytics.streams.completed");
@@ -132,7 +132,7 @@ public class AnalyticsConsumer {
         
         // Increment error counter by type
         metricsService.incrementCounter("analytics.errors.stream", 
-            Map.of("error_type", extractErrorType(error)));
+            "error_type", extractErrorType(error));
         
         log.warn("Stream error tracked: error={}", error);
     }
