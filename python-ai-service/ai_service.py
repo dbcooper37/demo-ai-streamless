@@ -65,13 +65,13 @@ class ChatService:
         # Track active streaming tasks for cancellation
         self.active_tasks = {}  # session_id -> {"message_id": str, "cancelled": bool}
     
-    async def process_user_message(self, session_id: str, user_id: str, 
+    async def process_user_message(self, session_id: str, user_id: str,
                                    message_content: str) -> str:
         """
         Process user message and return message ID
         """
         message_id = str(uuid.uuid4())
-        
+
         # Create user message
         user_message = ChatMessage.create_user_message(
             message_id=message_id,
@@ -79,15 +79,16 @@ class ChatService:
             user_id=user_id,
             content=message_content
         )
-        
+
         # Save to history
         redis_client.save_to_history(session_id, user_message)
-        
-        # Publish to PubSub
-        redis_client.publish_message(session_id, user_message)
-        
+
+        # NOTE: Do NOT publish user messages to PubSub to avoid duplication
+        # User messages are added optimistically by the frontend
+        # Only AI assistant messages should be streamed via PubSub
+
         logger.info(f"Processed user message: session={session_id}, msg_id={message_id}")
-        
+
         return message_id
     
     def prepare_streaming_response(self, session_id: str, user_id: str) -> str:

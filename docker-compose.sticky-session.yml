@@ -175,10 +175,8 @@ services:
       # JVM Settings - Optimized for multi-node
       - JAVA_OPTS=-Xms384m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
     depends_on:
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+      - redis
+      - kafka
     restart: unless-stopped
     networks:
       - app-network
@@ -213,10 +211,8 @@ services:
       - LOG_LEVEL=INFO
       - JAVA_OPTS=-Xms384m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
     depends_on:
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+      - redis
+      - kafka
     restart: unless-stopped
     networks:
       - app-network
@@ -251,10 +247,8 @@ services:
       - LOG_LEVEL=INFO
       - JAVA_OPTS=-Xms384m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
     depends_on:
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+      - redis
+      - kafka
     restart: unless-stopped
     networks:
       - app-network
