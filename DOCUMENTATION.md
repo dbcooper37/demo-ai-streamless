@@ -162,12 +162,12 @@ sequenceDiagram
     Note over Java: Release ownership
 ```
 
-**Timing Analysis:**
-- Step 1-3: ~10-20ms (HTTP + ownership claim)
-- Step 4-5: ~5-10ms (Python invoke + history save)
-- Loop: ~2-5 seconds (50ms per word)
-- Final: ~20-30ms (save + cleanup)
-- **Total**: 2-5 seconds end-to-end
+**Phân Tích Thời Gian:**
+- Bước 1-3: ~10-20ms (HTTP + yêu cầu ownership)
+- Bước 4-5: ~5-10ms (Gọi Python + lưu lịch sử)
+- Vòng lặp: ~2-5 giây (50ms mỗi từ)
+- Kết thúc: ~20-30ms (lưu + dọn dẹp)
+- **Tổng cộng**: 2-5 giây end-to-end
 
 ---
 
@@ -240,12 +240,12 @@ sequenceDiagram
     Note over Client2: ✅ Seamless experience!<br/>Saw history + continued streaming
 ```
 
-**Key Points:**
-- ❌ AI service **không biết** client disconnect
+**Điểm Quan Trọng:**
+- ❌ AI service **không biết** client ngắt kết nối
 - ✅ Chunks vẫn được **lưu vào Redis history**
-- ✅ Reconnect load **toàn bộ history** (including partial)
+- ✅ Kết nối lại tải **toàn bộ lịch sử** (bao gồm cả phần chưa hoàn thành)
 - ✅ Subscribe lại và **tiếp tục nhận chunks mới**
-- ✅ **Zero data loss**
+- ✅ **Không mất dữ liệu**
 
 ---
 
@@ -303,15 +303,15 @@ sequenceDiagram
     Note over Java2: Now can claim if needed
 ```
 
-**Why This Design?**
+**Tại Sao Thiết Kế Này?**
 
-1. **Problem**: Multiple Java nodes receive connections from same session
-2. **Without ownership**: Duplicate processing, duplicate WebSocket sends
-3. **With ownership**:
-   - ✅ Only one node processes a session at a time
-   - ✅ Other nodes serve history only (passive)
-   - ✅ No race conditions
-   - ✅ Automatic failover (TTL expires, another node can claim)
+1. **Vấn Đề**: Nhiều Java nodes nhận kết nối từ cùng một session
+2. **Không có ownership**: Xử lý trùng lặp, gửi WebSocket trùng lặp
+3. **Với ownership**:
+   - ✅ Chỉ một node xử lý session tại một thời điểm
+   - ✅ Các node khác chỉ phục vụ lịch sử (passive)
+   - ✅ Không có race conditions
+   - ✅ Failover tự động (TTL hết hạn, node khác có thể claim)
 
 ---
 
@@ -361,19 +361,19 @@ graph LR
     style R3 fill:#ffccbc
 ```
 
-**Load Distribution:**
-- NGINX: Round-robin (connectionstrong deterministic)
-- Session Ownership: Distributed via Redis locks
-- Each node handles different sessions
-- Perfect load balancing without sticky sessions
+**Phân Bổ Tải:**
+- NGINX: Round-robin (phân phối luân phiên)
+- Sở Hữu Session: Phân tán qua Redis locks
+- Mỗi node xử lý các session khác nhau
+- Cân bằng tải hoàn hảo mà không cần sticky sessions
 
 ---
 
 ## 🔧 Chi Tiết Implementation
 
-### 1. Frontend Layer (React)
+### 1. Tầng Frontend (React)
 
-#### WebSocket Connection & Reconnection
+#### Kết Nối & Kết Nối Lại WebSocket
 
 ```javascript
 // useWebSocket.js
@@ -383,7 +383,7 @@ const useWebSocket = (sessionId, userId) => {
   const [isConnected, setIsConnected] = useState(false);
 
   const connect = useCallback(() => {
-    // Build WebSocket URL
+    // Xây dựng WebSocket URL
     const wsUrl = `${VITE_WS_URL}?session_id=${sessionId}&user_id=${userId}`;
     
     const ws = new WebSocket(wsUrl);
@@ -392,7 +392,7 @@ const useWebSocket = (sessionId, userId) => {
     ws.onopen = () => {
       console.log('WebSocket connected');
       setIsConnected(true);
-      // Clear reconnect timer on successful connection
+      // Xóa bộ đếm kết nối lại khi kết nối thành công
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
       }
@@ -414,7 +414,7 @@ const useWebSocket = (sessionId, userId) => {
       console.log('WebSocket disconnected');
       setIsConnected(false);
       
-      // Auto-reconnect after 2 seconds
+      // Tự động kết nối lại sau 2 giây
       reconnectTimerRef.current = setTimeout(() => {
         console.log('Attempting to reconnect...');
         connect();
@@ -430,7 +430,7 @@ const useWebSocket = (sessionId, userId) => {
 };
 ```
 
-#### Message Handling
+#### Xử Lý Tin Nhắn
 
 ```javascript
 // useChat.js
@@ -440,7 +440,7 @@ const useChat = () => {
   const handleStreamingMessage = (message) => {
     if (message.role === 'assistant') {
       if (message.is_complete) {
-        // Final message - replace streaming with final
+        // Tin nhắn cuối cùng - thay thế streaming bằng kết quả cuối
         setMessages(prev => {
           const index = prev.findIndex(m => m.message_id === message.message_id);
           if (index >= 0) {
@@ -451,19 +451,19 @@ const useChat = () => {
           return [...prev, message];
         });
       } else {
-        // Streaming chunk - use accumulated content from server
+        // Chunk streaming - sử dụng nội dung tích lũy từ server
         setMessages(prev => {
           const index = prev.findIndex(m => m.message_id === message.message_id);
           if (index >= 0) {
-            // Update with latest accumulated content
+            // Cập nhật với nội dung tích lũy mới nhất
             const updated = [...prev];
             updated[index] = {
               ...message,
-              content: message.content, // Server already accumulated
+              content: message.content, // Server đã tích lũy
             };
             return updated;
           }
-          // New streaming message
+          // Tin nhắn streaming mới
           return [...prev, message];
         });
       }
@@ -474,17 +474,17 @@ const useChat = () => {
 };
 ```
 
-**Key Points:**
-- WebSocket auto-reconnect với 2s delay
-- History được load ngay khi connect
-- Streaming messages dùng accumulated content từ server
-- Không accumulate trên client (tránh duplicate text)
+**Điểm Quan Trọng:**
+- WebSocket tự động kết nối lại với delay 2s
+- Lịch sử được tải ngay khi kết nối
+- Streaming messages sử dụng nội dung tích lũy từ server
+- Không tích lũy trên client (tránh trùng lặp text)
 
 ---
 
-### 2. Load Balancer Layer (NGINX)
+### 2. Tầng Cân Bằng Tải (NGINX)
 
-#### Configuration
+#### Cấu Hình
 
 ```nginx
 http {
@@ -509,17 +509,17 @@ http {
         location /ws/ {
             proxy_pass http://websocket_backend;
 
-            # WebSocket upgrade
+            # Nâng cấp WebSocket
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
 
-            # Timeouts for long-lived connections
+            # Timeout cho kết nối dài hạn
             proxy_connect_timeout 3600s;
             proxy_send_timeout 3600s;
             proxy_read_timeout 3600s;
 
-            # Disable buffering for real-time
+            # Tắt buffering cho real-time
             proxy_buffering off;
         }
 
@@ -539,18 +539,18 @@ http {
 }
 ```
 
-**Characteristics:**
-- ❌ NO `ip_hash` - Pure round-robin
-- ✅ Health checks với `max_fails` và `fail_timeout`
+**Đặc Điểm:**
+- ❌ KHÔNG dùng `ip_hash` - Round-robin thuần túy
+- ✅ Kiểm tra sức khỏe với `max_fails` và `fail_timeout`
 - ✅ WebSocket upgrade headers
-- ✅ Long timeouts for WebSocket (3600s)
-- ✅ Buffering disabled for real-time streaming
+- ✅ Timeout dài cho WebSocket (3600s)
+- ✅ Tắt buffering cho streaming real-time
 
 ---
 
-### 3. Backend Layer (Java WebSocket Server)
+### 3. Tầng Backend (Java WebSocket Server)
 
-#### Session Ownership Management
+#### Quản Lý Quyền Sở Hữu Session
 
 ```java
 @Service
@@ -563,27 +563,27 @@ public class ChatOrchestrator {
     private int ownershipTtlMinutes;
     
     public void startStreamingSession(String sessionId, String userId, StreamCallback callback) {
-        // Claim session ownership using Redis SETNX
+        // Yêu cầu quyền sở hữu session sử dụng Redis SETNX
         String ownerKey = "session:owner:" + sessionId;
         Boolean claimed = redisTemplate.opsForValue()
             .setIfAbsent(ownerKey, getNodeId(), Duration.ofMinutes(ownershipTtlMinutes));
         
         if (claimed == null || !claimed) {
             log.warn("Failed to claim ownership for session: {}, already owned", sessionId);
-            return;  // Another node owns this session
+            return;  // Node khác đã sở hữu session này
         }
         
         log.info("Claimed ownership for session: {} by node: {}", sessionId, getNodeId());
         
-        // Only subscribe if we own the session
+        // Chỉ subscribe nếu chúng ta sở hữu session
         String channel = "chat:stream:" + sessionId;
         subscribeToChannel(channel, callback);
     }
     
     private void handleStreamComplete(ChatMessage message, StreamingContext context) {
-        // ... process completion ...
+        // ... xử lý hoàn thành ...
         
-        // Release ownership
+        // Giải phóng quyền sở hữu
         String ownerKey = "session:owner:" + context.session.getSessionId();
         redisTemplate.delete(ownerKey);
         log.info("Released ownership for completed session");
@@ -597,7 +597,7 @@ public class ChatOrchestrator {
 }
 ```
 
-#### Redis PubSub Subscription
+#### Đăng Ký Redis PubSub
 
 ```java
 private void subscribeToLegacyChannel(String channel, StreamingContext context) {
@@ -606,23 +606,23 @@ private void subscribeToLegacyChannel(String channel, StreamingContext context) 
             String body = new String(message.getBody());
             ChatMessage chatMessage = objectMapper.readValue(body, ChatMessage.class);
             
-            // Convert to StreamChunk
+            // Chuyển đổi sang StreamChunk
             StreamChunk chunk = StreamChunk.builder()
                 .messageId(chatMessage.getMessageId())
                 .index(context.chunkIndex.getAndIncrement())
-                .content(chatMessage.getContent())  // Accumulated content
+                .content(chatMessage.getContent())  // Nội dung tích lũy
                 .timestamp(Instant.now())
                 .build();
             
             // Cache chunk
             streamCache.appendChunk(chunk.getMessageId(), chunk);
             
-            // Publish to Kafka (async, optional)
+            // Xuất bản lên Kafka (async, tùy chọn)
             if (eventPublisher != null) {
                 eventPublisher.publishChunkReceived(context.session.getSessionId(), chunk);
             }
             
-            // Forward to WebSocket client
+            // Chuyển tiếp cho WebSocket client
             context.callback.onChunk(chunk);
             
         } catch (Exception e) {
@@ -636,28 +636,28 @@ private void subscribeToLegacyChannel(String channel, StreamingContext context) 
 }
 ```
 
-**Implementation Details:**
-- Ownership claim với `SETNX` (atomic operation)
-- TTL của 10 phút (configurable)
-- Tự động release khi stream complete hoặc error
-- Chỉ node owner mới subscribe PubSub
-- Kafka publishing là async (không block real-time path)
+**Chi Tiết Triển Khai:**
+- Yêu cầu quyền sở hữu với `SETNX` (thao tác nguyên tử)
+- TTL là 10 phút (có thể cấu hình)
+- Tự động giải phóng khi stream hoàn thành hoặc lỗi
+- Chỉ node sở hữu mới subscribe PubSub
+- Kafka publishing là async (không chặn đường dẫn real-time)
 
 ---
 
-### 4. AI Service Layer (Python FastAPI)
+### 4. Tầng Dịch Vụ AI (Python FastAPI)
 
-#### Streaming Generation
+#### Tạo Streaming
 
 ```python
 class ChatService:
     async def stream_ai_response(self, session_id: str, user_id: str, user_message: str) -> str:
         message_id = str(uuid.uuid4())
         
-        # Register streaming in Redis (visible to all nodes)
+        # Đăng ký streaming trong Redis (hiển thị cho tất cả nodes)
         redis_client.register_active_stream(session_id, message_id, ttl=300)
         
-        # Select response
+        # Chọn phản hồi
         response_text = AIService.select_response(user_message)
         
         accumulated_content = ""
@@ -665,9 +665,9 @@ class ChatService:
         cancelled = False
         
         try:
-            # Stream word by word
+            # Stream từng từ một
             async for chunk in AIService.generate_streaming_response(response_text):
-                # Check cancellation every 10 chunks (optimization)
+                # Kiểm tra hủy bỏ mỗi 10 chunks (tối ưu hóa)
                 if chunk_count % 10 == 0:
                     if redis_client.check_cancel_flag(session_id, message_id):
                         cancelled = True
@@ -676,22 +676,22 @@ class ChatService:
                 accumulated_content += chunk
                 chunk_count += 1
                 
-                # Create message with accumulated content
+                # Tạo tin nhắn với nội dung tích lũy
                 stream_message = ChatMessage.create_assistant_message(
                     message_id=message_id,
                     session_id=session_id,
                     user_id=user_id,
-                    content=accumulated_content,  # Full accumulated text
+                    content=accumulated_content,  # Toàn bộ văn bản tích lũy
                     is_complete=False,
-                    chunk=chunk  # Just this word
+                    chunk=chunk  # Chỉ từ hiện tại
                 )
                 
-                # Publish to Redis PubSub
+                # Xuất bản lên Redis PubSub
                 redis_client.publish_message(session_id, stream_message)
                 
-                await asyncio.sleep(0.01)  # Small delay
+                await asyncio.sleep(0.01)  # Delay nhỏ
             
-            # Send final message
+            # Gửi tin nhắn cuối cùng
             if not cancelled:
                 final_message = ChatMessage.create_assistant_message(
                     message_id=message_id,
@@ -704,28 +704,28 @@ class ChatService:
                 redis_client.save_to_history(session_id, final_message)
                 
         finally:
-            # Cleanup
+            # Dọn dẹp
             redis_client.clear_active_stream(session_id)
             redis_client.clear_cancel_flag(session_id, message_id)
         
         return message_id
 ```
 
-#### Distributed Cancellation
+#### Hủy Bỏ Phân Tán
 
 ```python
 def cancel_streaming(self, session_id: str, message_id: str) -> bool:
-    # Check active stream in Redis
+    # Kiểm tra stream đang hoạt động trong Redis
     active_message_id = redis_client.get_active_stream(session_id)
     
     if active_message_id and active_message_id == message_id:
-        # Set cancel flag (visible to all nodes)
+        # Đặt cờ hủy (hiển thị cho tất cả nodes)
         redis_client.set_cancel_flag(session_id, message_id, ttl=60)
         return True
     
     return False
 
-# In RedisClient
+# Trong RedisClient
 def set_cancel_flag(self, session_id: str, message_id: str, ttl: int):
     key = f"streaming:cancel:{session_id}:{message_id}"
     self.client.setex(key, ttl, "1")
@@ -735,17 +735,17 @@ def check_cancel_flag(self, session_id: str, message_id: str) -> bool:
     return self.client.exists(key) > 0
 ```
 
-**Key Features:**
-- Content được accumulate trên server (không phải client)
-- Cancellation qua Redis (work across all nodes)
-- Check cancel mỗi 10 chunks (optimization)
-- Async streaming với `asyncio`
+**Tính Năng Chính:**
+- Nội dung được tích lũy trên server (không phải client)
+- Hủy bỏ qua Redis (hoạt động trên tất cả các nodes)
+- Kiểm tra hủy mỗi 10 chunks (tối ưu hóa)
+- Streaming bất đồng bộ với `asyncio`
 
 ---
 
 ## 🗄️ Infrastructure Layer
 
-### Redis Data Structures
+### Cấu Trúc Dữ Liệu Redis
 
 ```mermaid
 graph TB
@@ -782,55 +782,55 @@ graph TB
     style C2 fill:#90caf9
 ```
 
-#### Usage Patterns
+#### Mẫu Sử Dụng
 
-**1. PubSub (Real-time Messaging)**
+**1. PubSub (Nhắn Tin Real-time)**
 ```redis
-# Publish chunk
+# Xuất bản chunk
 PUBLISH chat:stream:session_123 '{"content":"Hello","chunk":"world"}'
 
 # Subscribe (Java nodes)
 SUBSCRIBE chat:stream:session_123
 ```
 
-**2. History Storage**
+**2. Lưu Trữ Lịch Sử**
 ```redis
-# Save message
+# Lưu tin nhắn
 LPUSH chat:history:session_123 '{"role":"assistant","content":"..."}'
-EXPIRE chat:history:session_123 86400  # 24 hours
+EXPIRE chat:history:session_123 86400  # 24 giờ
 
-# Get history
+# Lấy lịch sử
 LRANGE chat:history:session_123 0 -1
 ```
 
-**3. Session Ownership**
+**3. Quyền Sở Hữu Session**
 ```redis
-# Claim ownership (atomic)
+# Yêu cầu quyền sở hữu (nguyên tử)
 SETNX session:owner:session_123 "node-1"
-EXPIRE session:owner:session_123 600  # 10 minutes
+EXPIRE session:owner:session_123 600  # 10 phút
 
-# Check owner
+# Kiểm tra chủ sở hữu
 GET session:owner:session_123
 
-# Release ownership
+# Giải phóng quyền sở hữu
 DEL session:owner:session_123
 ```
 
-**4. Distributed State**
+**4. Trạng Thái Phân Tán**
 ```redis
-# Register active stream
+# Đăng ký stream hoạt động
 SET streaming:active:session_123 "msg-456" EX 300
 
-# Set cancel flag
+# Đặt cờ hủy
 SET streaming:cancel:session_123:msg-456 "1" EX 60
 
-# Check cancel
+# Kiểm tra hủy
 EXISTS streaming:cancel:session_123:msg-456
 ```
 
 ---
 
-### Kafka Event Sourcing
+### Event Sourcing Với Kafka
 
 ```mermaid
 graph LR
@@ -868,7 +868,7 @@ graph LR
     style C3 fill:#ffccbc
 ```
 
-#### Event Types
+#### Các Loại Sự Kiện
 
 **chat-events topic:**
 ```json
@@ -901,7 +901,7 @@ graph LR
 }
 ```
 
-#### Event Flow
+#### Luồng Sự Kiện
 
 ```mermaid
 sequenceDiagram
@@ -927,16 +927,16 @@ sequenceDiagram
     end
 ```
 
-**Benefits:**
-- ✅ Complete audit trail cho compliance
-- ✅ Real-time analytics and monitoring
-- ✅ Stream replay để debug issues
-- ✅ Event sourcing pattern
-- ✅ Async processing (no impact on latency)
+**Lợi Ích:**
+- ✅ Dấu vết kiểm toán đầy đủ cho tuân thủ
+- ✅ Phân tích và giám sát real-time
+- ✅ Phát lại stream để debug vấn đề
+- ✅ Mẫu event sourcing
+- ✅ Xử lý bất đồng bộ (không ảnh hưởng độ trễ)
 
 ---
 
-### Scalability Characteristics
+### Đặc Điểm Khả Năng Mở Rộng
 
 ```mermaid
 graph TB
@@ -969,25 +969,25 @@ graph TB
     style L3 fill:#ffccbc
 ```
 
-**Horizontal Scaling:**
-- Add Java nodes: Linear scaling (stateless)
-- Add Python nodes: Linear scaling (stateless)
-- Redis: Vertical first, then cluster mode
-- Kafka: Add brokers and partitions
+**Mở Rộng Theo Chiều Ngang:**
+- Thêm Java nodes: Mở rộng tuyến tính (stateless)
+- Thêm Python nodes: Mở rộng tuyến tính (stateless)
+- Redis: Mở rộng theo chiều dọc trước, sau đó cluster mode
+- Kafka: Thêm brokers và partitions
 
-**Bottlenecks:**
-1. Redis single instance (~30K ops/sec limit)
-   - Solution: Redis Cluster with sharding
-2. NGINX connection limit (~50K)
-   - Solution: Multiple NGINX instances
-3. Database writes (H2 in-memory)
-   - Solution: PostgreSQL cluster
+**Điểm Nghẽn:**
+1. Redis single instance (~30K ops/sec giới hạn)
+   - Giải pháp: Redis Cluster với sharding
+2. Giới hạn kết nối NGINX (~50K)
+   - Giải pháp: Nhiều NGINX instances
+3. Ghi cơ sở dữ liệu (H2 in-memory)
+   - Giải pháp: PostgreSQL cluster
 
 ---
 
 ## 🔐 Security Considerations
 
-### Current Implementation (PoC)
+### Triển Khai Hiện Tại (PoC)
 
 ```mermaid
 graph LR
@@ -1005,7 +1005,7 @@ graph LR
     style E fill:#fff59d
 ```
 
-**JWT Validation:**
+**Xác Thực JWT:**
 ```java
 @Service
 public class SecurityValidator {
@@ -1034,9 +1034,9 @@ public class SecurityValidator {
 }
 ```
 
-### Production Recommendations
+### Khuyến Nghị Cho Production
 
-**1. HTTPS/WSS:**
+**1. HTTPS/WSS (Bảo Mật Kết Nối):**
 ```nginx
 server {
     listen 443 ssl http2;
@@ -1046,17 +1046,17 @@ server {
     
     location /ws/ {
         proxy_pass http://websocket_backend;
-        # WebSocket upgrade over TLS
+        # Nâng cấp WebSocket qua TLS
     }
 }
 ```
 
-**2. Token in Headers:**
+**2. Token Trong Headers:**
 ```javascript
-// Bad: Token in URL (visible in logs)
+// TỆ: Token trong URL (hiển thị trong logs)
 ws://host/ws?token=xyz
 
-// Good: Token in message after connect
+// TỐt: Token trong tin nhắn sau khi kết nối
 ws.onopen = () => {
     ws.send(JSON.stringify({
         type: 'auth',
@@ -1065,7 +1065,7 @@ ws.onopen = () => {
 };
 ```
 
-**3. Rate Limiting:**
+**3. Giới Hạn Tốc Độ:**
 ```java
 @Service
 public class RateLimitService {
@@ -1073,12 +1073,12 @@ public class RateLimitService {
     
     public boolean allowRequest(String userId) {
         AtomicInteger count = requestCounts.get(userId);
-        return count.incrementAndGet() <= 100;  // 100 req/min
+        return count.incrementAndGet() <= 100;  // 100 yêu cầu/phút
     }
 }
 ```
 
-**4. Input Validation:**
+**4. Xác Thực Đầu Vào:**
 ```java
 @NotBlank
 @Size(min = 1, max = 5000)
@@ -1092,11 +1092,11 @@ private String sessionId;
 
 ## 📚 Best Practices & Lessons Learned
 
-### ✅ Do's
+### ✅ Nên Làm
 
-**1. Use Distributed Locking for Session Ownership**
+**1. Sử Dụng Khóa Phân Tán Cho Quyền Sở Hữu Session**
 ```java
-// GOOD: Redis SETNX for atomic claim
+// TỐT: Redis SETNX cho yêu cầu nguyên tử
 Boolean claimed = redisTemplate.opsForValue()
     .setIfAbsent(ownerKey, nodeId, Duration.ofMinutes(10));
 
@@ -1105,36 +1105,36 @@ if (claimed) {
 }
 ```
 
-**2. Accumulate Content on Server**
+**2. Tích Lũy Nội Dung Trên Server**
 ```python
-# GOOD: Server accumulates, client just displays
+# TỐT: Server tích lũy, client chỉ hiển thị
 accumulated_content += chunk
 message = {
-    "content": accumulated_content,  # Full text
-    "chunk": chunk  # Current word
+    "content": accumulated_content,  # Toàn bộ văn bản
+    "chunk": chunk  # Từ hiện tại
 }
 ```
 
-**3. Check Cancellation Periodically**
+**3. Kiểm Tra Hủy Bỏ Định Kỳ**
 ```python
-# GOOD: Check every 10 chunks (reduce Redis calls)
+# TỐT: Kiểm tra mỗi 10 chunks (giảm lần gọi Redis)
 if chunk_count % 10 == 0:
     if redis_client.check_cancel_flag(session_id, message_id):
         cancelled = True
         break
 ```
 
-**4. Async Kafka Publishing**
+**4. Xuất Bản Kafka Bất Đồng Bộ**
 ```java
-// GOOD: Fire and forget (no blocking)
+// TỐT: Fire and forget (không chặn)
 CompletableFuture.runAsync(() -> {
     eventPublisher.publishChunkReceived(session, chunk);
 });
 ```
 
-**5. Per-Session Synchronized Writes**
+**5. Ghi Đồng Bộ Theo Session**
 ```java
-// GOOD: Per-session lock (not global)
+// TỐT: Khóa theo session (không toàn cục)
 Object lock = sessionLocks.computeIfAbsent(sessionId, k -> new Object());
 synchronized (lock) {
     wsSession.sendMessage(textMessage);
@@ -1143,69 +1143,69 @@ synchronized (lock) {
 
 ---
 
-### ❌ Don'ts
+### ❌ Không Nên Làm
 
-**1. Don't Use Sticky Sessions**
+**1. Không Sử Dụng Sticky Sessions**
 ```nginx
-# BAD: ip_hash causes uneven distribution
+# TỆ: ip_hash gây phân bố không đều
 upstream backend {
     ip_hash;
     server node1:8080;
 }
 
-# GOOD: Round-robin + distributed ownership
+# TỐT: Round-robin + quyền sở hữu phân tán
 upstream backend {
     server node1:8080;
     server node2:8080;
 }
 ```
 
-**2. Don't Accumulate on Client**
+**2. Không Tích Lũy Trên Client**
 ```javascript
-// BAD: Client-side accumulation causes duplicates
+// TỆ: Tích lũy phía client gây trùng lặp
 const [content, setContent] = useState('');
 setContent(prev => prev + message.chunk);  // ❌
 
-// GOOD: Use server's accumulated content
+// TỐT: Sử dụng nội dung tích lũy từ server
 setMessages(prev => {
-    updated[index] = message;  // Has full content
+    updated[index] = message;  // Có toàn bộ nội dung
     return updated;
 });
 ```
 
-**3. Don't Block Real-time Path**
+**3. Không Chặn Đường Dẫn Real-time**
 ```java
-// BAD: Blocking Kafka call in streaming path
-kafkaTemplate.send(topic, event).get();  // ❌ Blocks!
+// TỆ: Lệnh gọi Kafka chặn trong đường streaming
+kafkaTemplate.send(topic, event).get();  // ❌ Chặn!
 sendToWebSocket(message);
 
-// GOOD: Async Kafka publish
+// TỐT: Xuất bản Kafka bất đồng bộ
 kafkaTemplate.send(topic, event);  // Fire and forget
 sendToWebSocket(message);
 ```
 
-**4. Don't Use Global Locks**
+**4. Không Sử Dụng Khóa Toàn Cục**
 ```java
-// BAD: Global lock kills concurrency
+// TỆ: Khóa toàn cục giết chết đồng thời
 synchronized(this) {  // ❌
     processAllSessions();
 }
 
-// GOOD: Fine-grained per-session locks
+// TỐT: Khóa chi tiết theo session
 Object lock = sessionLocks.get(sessionId);
 synchronized(lock) {
     processSession(sessionId);
 }
 ```
 
-**5. Don't Forget Cleanup**
+**5. Không Quên Dọn Dẹp**
 ```java
-// BAD: No cleanup = memory leak
+// TỆ: Không dọn dẹp = rò rỉ bộ nhớ
 activeStreams.put(sessionId, context);
-// ... process ...
-// ❌ Forgot to remove!
+// ... xử lý ...
+// ❌ Quên xóa!
 
-// GOOD: Always cleanup in finally
+// TỐT: Luôn dọn dẹp trong finally
 try {
     processStream();
 } finally {
@@ -1218,46 +1218,46 @@ try {
 
 ## 🚀 Deployment Guide
 
-### Single-Node Deployment
+### Triển Khai Đơn Node
 
 ```bash
-# Start single instance
+# Khởi động đơn instance
 docker-compose up --build
 
-# Services started:
+# Các dịch vụ đã khởi động:
 # - Redis: 6379
 # - Kafka: 9092, 9093
 # - Python AI: 8000
 # - Java WebSocket: 8080
 # - Frontend: 3000
 
-# Access:
-# - App: http://localhost:3000
+# Truy cập:
+# - Ứng dụng: http://localhost:3000
 # - H2 Console: http://localhost:8080/h2-console
-# - Kafka UI: http://localhost:8090 (with --profile debug)
+# - Kafka UI: http://localhost:8090 (với --profile debug)
 ```
 
-### Multi-Node Deployment
+### Triển Khai Đa Node
 
 ```bash
-# Start 3-node cluster
+# Khởi động cluster 3 node
 docker-compose -f docker-compose.multi-node.yml up --build
 
-# Services started:
-# - Redis: 6379 (shared)
-# - Kafka: 9092, 9093 (shared)
+# Các dịch vụ đã khởi động:
+# - Redis: 6379 (chia sẻ)
+# - Kafka: 9092, 9093 (chia sẻ)
 # - Python AI Nodes: 8001, 8002, 8003
 # - Java WS Nodes: 8081, 8082, 8083
 # - NGINX LB: 8080
 # - Frontend: 3000
 
-# Access:
-# - App: http://localhost:3000
-# - API: http://localhost:8080/api (load balanced)
-# - WebSocket: ws://localhost:8080/ws/chat (load balanced)
+# Truy cập:
+# - Ứng dụng: http://localhost:3000
+# - API: http://localhost:8080/api (cân bằng tải)
+# - WebSocket: ws://localhost:8080/ws/chat (cân bằng tải)
 ```
 
-### Environment Variables
+### Biến Môi Trường
 
 ```yaml
 # Java WebSocket Server
@@ -1268,7 +1268,7 @@ LOG_LEVEL: INFO
 CACHE_L1_MAX_SIZE: 10000
 STREAM_RECOVERY_TIMEOUT: 5
 
-# Python AI Service
+# Dịch Vụ AI Python
 REDIS_HOST: redis
 NODE_ID: ai-node-1
 LOG_LEVEL: INFO
@@ -1282,7 +1282,7 @@ VITE_API_URL: http://localhost:8080/api
 
 ## 📈 Monitoring & Observability
 
-### Metrics Collection
+### Thu Thập Số Liệu
 
 ```java
 @Service
@@ -1304,26 +1304,26 @@ public class MetricsService {
 }
 ```
 
-### Log Analysis
+### Phân Tích Log
 
 ```bash
-# View metrics
+# Xem số liệu
 docker logs demo-java-websocket | grep "\[METRIC\]"
 
-# Expected output:
+# Kết quả mong đợi:
 [METRIC] websocket.connection.established | sessionId=abc | userId=user1
 [METRIC] message.streaming.started | sessionId=abc | messageId=xyz
 [METRIC] message.streaming.completed | sessionId=abc | chunks=42 | duration=2500ms
 [METRIC] cache.hit | type=L1 | key=message:xyz
 ```
 
-### Health Checks
+### Kiểm Tra Sức Khỏe
 
 ```bash
-# Check Java backend health
+# Kiểm tra sức khỏe Java backend
 curl http://localhost:8080/actuator/health
 
-# Response:
+# Phản hồi:
 {
   "status": "UP",
   "components": {
@@ -1332,10 +1332,10 @@ curl http://localhost:8080/actuator/health
   }
 }
 
-# Check Python AI health
+# Kiểm tra sức khỏe Python AI
 curl http://localhost:8000/health
 
-# Response:
+# Phản hồi:
 {
   "status": "healthy",
   "redis": "connected",
@@ -1347,52 +1347,52 @@ curl http://localhost:8000/health
 
 ## 🎯 Conclusion
 
-### Strengths của Giải Pháp
+### Điểm Mạnh Của Giải Pháp
 
-1. **Real-time Performance**
+1. **Hiệu Năng Real-time**
    - ✅ TTFB < 120ms
-   - ✅ Streaming latency < 50ms per chunk
-   - ✅ Concurrent users: 1000+ per node
+   - ✅ Độ trễ streaming < 50ms mỗi chunk
+   - ✅ Người dùng đồng thời: 1000+ mỗi node
 
-2. **Reliability**
-   - ✅ Auto-reconnection
-   - ✅ Zero data loss on reload
-   - ✅ Session ownership prevents duplicates
+2. **Độ Tin Cậy**
+   - ✅ Tự động kết nối lại
+   - ✅ Không mất dữ liệu khi reload
+   - ✅ Quyền sở hữu session ngăn trùng lặp
    - ✅ Event sourcing với Kafka
 
-3. **Scalability**
-   - ✅ Horizontal scaling (stateless)
-   - ✅ No sticky session required
-   - ✅ Linear performance increase
+3. **Khả Năng Mở Rộng**
+   - ✅ Mở rộng theo chiều ngang (stateless)
+   - ✅ Không cần sticky session
+   - ✅ Tăng hiệu năng tuyến tính
 
-4. **Developer Experience**
-   - ✅ Clean architecture
-   - ✅ Easy to understand và maintain
-   - ✅ Well-documented với diagrams
-   - ✅ Testable components
+4. **Trải Nghiệm Phát Triển**
+   - ✅ Kiến trúc sạch
+   - ✅ Dễ hiểu và bảo trì
+   - ✅ Tài liệu đầy đủ với biểu đồ
+   - ✅ Các thành phần có thể kiểm thử
 
-### Key Takeaways
+### Bài Học Quan Trọng
 
-1. **No Sticky Session Required**: Distributed ownership via Redis works better
-2. **Server-side Accumulation**: Simpler client, more reliable
-3. **Async Kafka**: Zero impact on real-time performance
-4. **Periodic Cancel Check**: Balance between responsiveness và overhead
-5. **Per-Session Locking**: Better concurrency than global locks
+1. **Không Cần Sticky Session**: Quyền sở hữu phân tán qua Redis hoạt động tốt hơn
+2. **Tích Lũy Phía Server**: Client đơn giản hơn, đáng tin cậy hơn
+3. **Kafka Bất Đồng Bộ**: Không ảnh hưởng đến hiệu năng real-time
+4. **Kiểm Tra Hủy Định Kỳ**: Cân bằng giữa khả năng phản hồi và chi phí
+5. **Khóa Theo Session**: Đồng thời tốt hơn khóa toàn cục
 
 ---
 
 ## 📞 Tài Liệu Bổ Sung
 
-### Documentation Files
+### Tập Tin Tài Liệu
 - `README.md` - Hướng dẫn nhanh và quick start guide
 
-### Configuration Files
+### Tập Tin Cấu Hình
 - `docker-compose.yml` - Single-node setup
 - `docker-compose.multi-node.yml` - Multi-node setup
 - `nginx-lb.conf` - NGINX configuration
 - `application.yml` - Java Spring configuration
 
-### Key Source Files
+### Tập Tin Mã Nguồn Chính
 ```
 java-websocket-server/src/main/java/com/demo/websocket/
 ├── infrastructure/
