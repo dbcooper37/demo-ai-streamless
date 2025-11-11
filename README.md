@@ -240,6 +240,14 @@ Streaming Message:
 
 ## 🏗️ Kiến trúc chi tiết | Detailed Architecture
 
+### Core Principles:
+
+**No Sticky Sessions Required:**
+- ✅ NGINX uses pure round-robin load balancing
+- ✅ Session ownership managed via Redis distributed locks (SETNX)
+- ✅ Any node can serve any request
+- ✅ Perfect load distribution without client affinity
+
 ### Component Responsibilities:
 
 **1. Python AI Service (python-ai-service/app.py):**
@@ -247,30 +255,42 @@ Streaming Message:
 - Mô phỏng AI generating response (streaming word by word)
 - Publish mỗi chunk vào Redis PubSub: `chat:stream:{session_id}`
 - Lưu message hoàn chỉnh vào Redis List: `chat:history:{session_id}`
+- Content được accumulate trên server (không phải client)
 
 **2. Java WebSocket Server:**
-- Subscribe Redis PubSub channels theo session
+- Claim session ownership qua Redis SETNX (atomic operation)
+- Subscribe Redis PubSub channels chỉ khi own session
 - Forward streaming messages đến WebSocket clients
-- Publish events to Kafka cho event sourcing
+- Publish events to Kafka cho event sourcing (async, không block)
 - Khi client connect: gửi chat history từ Redis
-- Quản lý multiple WebSocket connections per session
+- Release ownership khi session complete hoặc error
 
 **3. React Frontend (frontend/src/App.jsx):**
 - Kết nối WebSocket với session_id (lưu trong localStorage)
 - Nhận history ngay khi connect
 - Hiển thị streaming messages real-time
-- Auto-reconnect khi mất kết nối
+- Auto-reconnect sau 2 seconds khi mất kết nối
+- Dùng accumulated content từ server (không accumulate trên client)
 
 **4. Redis:**
 - **PubSub**: Channel `chat:stream:{session_id}` cho streaming
-- **List**: Key `chat:history:{session_id}` cho persistent storage
-- **TTL**: 24 hours (có thể config)
+- **List**: Key `chat:history:{session_id}` cho persistent storage (TTL: 24h)
+- **Session Ownership**: Key `session:owner:{session_id}` cho distributed locking (TTL: 10min)
+- **Distributed State**: Cancellation flags và active stream tracking
 
 **5. Kafka (KRaft mode):**
 - **Event Sourcing**: Lưu trữ tất cả events (messages, chunks, metadata)
-- **Topics**: Auto-created based on session
+- **Topics**: `chat-events` và `stream-events` (auto-created)
 - **Retention**: 7 days (configurable)
 - **No Zookeeper**: Sử dụng KRaft mode (Kafka Raft) cho metadata management
+- **Consumers**: AuditTrailConsumer, AnalyticsConsumer (có thể extend)
+
+**6. NGINX Load Balancer (Multi-node only):**
+- Round-robin distribution (NO ip_hash, NO sticky sessions)
+- Health checks với max_fails và fail_timeout
+- WebSocket upgrade support
+- Long timeouts cho WebSocket connections (3600s)
+- Separate upstreams cho Java và Python services
 
 ---
 
