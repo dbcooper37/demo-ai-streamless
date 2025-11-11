@@ -1,18 +1,18 @@
 package com.demo.websocket.controller;
 
+import com.demo.websocket.service.AiServiceLoadBalancer;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 
 import java.util.Map;
 
 /**
- * Chat Controller - Proxy for AI Service
+ * Chat Controller - Proxy for AI Service with Load Balancing
  * All API calls from frontend should go through this controller
+ * Requests are load-balanced across multiple AI service nodes
  */
 @Slf4j
 @RestController
@@ -20,37 +20,25 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class ChatController {
 
-    private final RestTemplate restTemplate;
-    
-    @Value("${ai.service.url:http://python-ai-service:8000}")
-    private String aiServiceUrl;
+    private final AiServiceLoadBalancer aiServiceLoadBalancer;
 
-    public ChatController() {
-        this.restTemplate = new RestTemplate();
+    public ChatController(AiServiceLoadBalancer aiServiceLoadBalancer) {
+        this.aiServiceLoadBalancer = aiServiceLoadBalancer;
     }
 
     /**
      * Send chat message
      * POST /api/chat
+     * Load-balanced across AI service nodes
      */
     @PostMapping("/chat")
     public ResponseEntity<?> sendMessage(@RequestBody Map<String, Object> request) {
         try {
-            log.info("Proxying chat request to AI service: session_id={}", 
+            log.info("Proxying chat request to AI service (load-balanced): session_id={}", 
                     request.get("session_id"));
             
-            // Forward request to Python AI service
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
-            
-            String url = aiServiceUrl + "/chat";
-            ResponseEntity<Map> response = restTemplate.postForEntity(
-                    url, 
-                    entity, 
-                    Map.class
-            );
+            // Forward request to AI service via load balancer
+            ResponseEntity<Map> response = aiServiceLoadBalancer.post("/chat", request);
             
             log.info("Chat request successful: status={}, message_id={}", 
                     response.getStatusCode(), 
@@ -94,26 +82,17 @@ public class ChatController {
     /**
      * Cancel streaming message
      * POST /api/cancel
+     * Load-balanced across AI service nodes
      */
     @PostMapping("/cancel")
     public ResponseEntity<?> cancelMessage(@RequestBody Map<String, Object> request) {
         try {
-            log.info("Proxying cancel request to AI service: session_id={}, message_id={}", 
+            log.info("Proxying cancel request to AI service (load-balanced): session_id={}, message_id={}", 
                     request.get("session_id"), 
                     request.get("message_id"));
             
-            // Forward request to Python AI service
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
-            
-            String url = aiServiceUrl + "/cancel";
-            ResponseEntity<Map> response = restTemplate.postForEntity(
-                    url, 
-                    entity, 
-                    Map.class
-            );
+            // Forward request to AI service via load balancer
+            ResponseEntity<Map> response = aiServiceLoadBalancer.post("/cancel", request);
             
             log.info("Cancel request successful: status={}", response.getStatusCode());
             
@@ -155,14 +134,14 @@ public class ChatController {
     /**
      * Get chat history
      * GET /api/history/{sessionId}
+     * Load-balanced across AI service nodes
      */
     @GetMapping("/history/{sessionId}")
     public ResponseEntity<?> getHistory(@PathVariable String sessionId) {
         try {
-            log.info("Proxying history request to AI service: session_id={}", sessionId);
+            log.info("Proxying history request to AI service (load-balanced): session_id={}", sessionId);
             
-            String url = aiServiceUrl + "/history/" + sessionId;
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            ResponseEntity<Map> response = aiServiceLoadBalancer.get("/history/" + sessionId);
             
             log.info("History request successful: status={}, count={}", 
                     response.getStatusCode(),
@@ -206,14 +185,14 @@ public class ChatController {
     /**
      * Clear chat history
      * DELETE /api/history/{sessionId}
+     * Load-balanced across AI service nodes
      */
     @DeleteMapping("/history/{sessionId}")
     public ResponseEntity<?> clearHistory(@PathVariable String sessionId) {
         try {
-            log.info("Proxying clear history request to AI service: session_id={}", sessionId);
+            log.info("Proxying clear history request to AI service (load-balanced): session_id={}", sessionId);
             
-            String url = aiServiceUrl + "/history/" + sessionId;
-            restTemplate.delete(url);
+            aiServiceLoadBalancer.delete("/history/" + sessionId);
             
             log.info("Clear history request successful");
             
@@ -254,29 +233,30 @@ public class ChatController {
     }
 
     /**
-     * Health check for AI service connectivity
+     * Health check for all AI service nodes
      * GET /api/ai-health
      */
     @GetMapping("/ai-health")
     public ResponseEntity<?> checkAiServiceHealth() {
         try {
-            String url = aiServiceUrl + "/health";
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            Map<String, Object> healthStatus = aiServiceLoadBalancer.checkHealth();
             
-            return ResponseEntity.ok(Map.of(
-                    "ai_service", "reachable",
-                    "status", response.getBody() != null ? response.getBody().get("status") : "unknown",
-                    "url", aiServiceUrl
-            ));
+            String overallStatus = (String) healthStatus.get("overall_status");
+            if ("available".equals(overallStatus)) {
+                return ResponseEntity.ok(healthStatus);
+            } else {
+                return ResponseEntity
+                        .status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(healthStatus);
+            }
                     
         } catch (Exception e) {
             log.error("AI service health check failed", e);
             return ResponseEntity
                     .status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of(
-                            "ai_service", "unreachable",
-                            "error", e.getMessage(),
-                            "url", aiServiceUrl
+                            "error", "Health check failed",
+                            "detail", e.getMessage()
                     ));
         }
     }

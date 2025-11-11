@@ -62,10 +62,11 @@ spring:
 # Node identification for distributed deployment
 NODE_ID: ${NODE_ID:node-default}
 
-# AI Service Configuration
+# AI Service Configuration - Multi-node Load Balancing
 ai:
   service:
-    url: ${AI_SERVICE_URL:http://python-ai-service:8000}
+    # Comma-separated list of AI service URLs for load balancing
+    urls: ${AI_SERVICE_URLS:http://python-ai-1:8000,http://python-ai-2:8000,http://python-ai-3:8000}
 
 # Security Configuration
 security:

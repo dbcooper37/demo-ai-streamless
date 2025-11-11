@@ -150,6 +150,9 @@ services:
       - SPRING_KAFKA_ENABLED=true
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       
+      # AI Service Configuration - Load Balanced
+      - AI_SERVICE_URLS=http://python-ai-1:8000,http://python-ai-2:8000,http://python-ai-3:8000
+      
       # Security
       - JWT_SECRET=${JWT_SECRET:-sticky-session-secret-key-minimum-256-bits-required-for-production}
       - JWT_EXPIRATION_MS=3600000
@@ -196,6 +199,7 @@ services:
       - SPRING_DATA_REDIS_PORT=6379
       - SPRING_KAFKA_ENABLED=true
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - AI_SERVICE_URLS=http://python-ai-1:8000,http://python-ai-2:8000,http://python-ai-3:8000
       - JWT_SECRET=${JWT_SECRET:-sticky-session-secret-key-minimum-256-bits-required-for-production}
       - JWT_EXPIRATION_MS=3600000
       - CACHE_L1_MAX_SIZE=5000
@@ -233,6 +237,7 @@ services:
       - SPRING_DATA_REDIS_PORT=6379
       - SPRING_KAFKA_ENABLED=true
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - AI_SERVICE_URLS=http://python-ai-1:8000,http://python-ai-2:8000,http://python-ai-3:8000
       - JWT_SECRET=${JWT_SECRET:-sticky-session-secret-key-minimum-256-bits-required-for-production}
       - JWT_EXPIRATION_MS=3600000
       - CACHE_L1_MAX_SIZE=5000
