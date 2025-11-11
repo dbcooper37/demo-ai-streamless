@@ -135,6 +135,70 @@ class RedisClient:
         except RedisError as e:
             logger.error(f"Failed to clear history: {e}")
             return False
+    
+    def set_cancel_flag(self, session_id: str, message_id: str, ttl: int = 60) -> bool:
+        """Set cancel flag in Redis for distributed cancellation"""
+        try:
+            key = f"chat:cancel:{session_id}:{message_id}"
+            self.client.setex(key, ttl, "1")
+            logger.info(f"Set cancel flag: session={session_id}, message={message_id}")
+            return True
+        except RedisError as e:
+            logger.error(f"CRITICAL: Failed to set cancel flag (Redis down?): {e}")
+            return False
+    
+    def check_cancel_flag(self, session_id: str, message_id: str) -> bool:
+        """Check if cancellation has been requested"""
+        try:
+            key = f"chat:cancel:{session_id}:{message_id}"
+            result = self.client.exists(key)
+            return result > 0
+        except RedisError as e:
+            # IMPORTANT: If Redis fails, we continue streaming (fail-safe)
+            # This prevents Redis outages from breaking all streaming
+            logger.warning(f"Redis unavailable for cancel check, continuing stream: {e}")
+            return False
+    
+    def clear_cancel_flag(self, session_id: str, message_id: str) -> bool:
+        """Clear cancel flag after processing"""
+        try:
+            key = f"chat:cancel:{session_id}:{message_id}"
+            self.client.delete(key)
+            return True
+        except RedisError as e:
+            logger.error(f"Failed to clear cancel flag: {e}")
+            return False
+    
+    def register_active_stream(self, session_id: str, message_id: str, ttl: int = 300) -> bool:
+        """Register an active streaming task in Redis"""
+        try:
+            key = f"chat:active:{session_id}"
+            self.client.setex(key, ttl, message_id)
+            logger.info(f"Registered active stream: session={session_id}, message={message_id}")
+            return True
+        except RedisError as e:
+            logger.error(f"Failed to register active stream: {e}")
+            return False
+    
+    def get_active_stream(self, session_id: str) -> str:
+        """Get the active streaming message ID for a session"""
+        try:
+            key = f"chat:active:{session_id}"
+            message_id = self.client.get(key)
+            return message_id if message_id else None
+        except RedisError as e:
+            logger.error(f"Failed to get active stream: {e}")
+            return None
+    
+    def clear_active_stream(self, session_id: str) -> bool:
+        """Clear active streaming task registration"""
+        try:
+            key = f"chat:active:{session_id}"
+            self.client.delete(key)
+            return True
+        except RedisError as e:
+            logger.error(f"Failed to clear active stream: {e}")
+            return False
 
 
 # Global Redis client instance

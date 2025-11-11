@@ -178,10 +178,8 @@ class ChatService:
     
     def __init__(self):
         self.ai_service = AIService()
-        # Track active streaming tasks for cancellation
-        self.active_tasks = {}  # session_id -> {"message_id": str, "cancelled": bool}
-        # Track recently completed/cancelled messages to handle duplicate cancel requests
-        self.completed_messages = {}  # session_id -> {"message_id": str, "completed_at": timestamp}
+        # NOTE: Removed in-memory active_tasks and completed_messages
+        # Now using Redis for distributed state management across multiple nodes
     
     async def process_user_message(self, session_id: str, user_id: str, 
                                    message_content: str) -> str:
@@ -216,11 +214,8 @@ class ChatService:
         """
         message_id = str(uuid.uuid4())
         
-        # Track this streaming task
-        self.active_tasks[session_id] = {
-            "message_id": message_id,
-            "cancelled": False
-        }
+        # Register this streaming task in Redis for distributed tracking
+        redis_client.register_active_stream(session_id, message_id, ttl=300)
         
         logger.info(f"Starting AI response streaming for session={session_id}, msg_id={message_id}")
         
@@ -231,15 +226,19 @@ class ChatService:
         accumulated_content = ""
         chunk_count = 0
         cancelled = False
+        last_cancel_check = 0
         
         try:
             # Stream response word by word
             async for chunk in AIService.generate_streaming_response(response_text):
-                # Check if cancelled
-                if self.active_tasks.get(session_id, {}).get("cancelled", False):
-                    logger.info(f"Streaming cancelled for session={session_id}, msg_id={message_id}")
-                    cancelled = True
-                    break
+                # Check if cancelled via Redis (works across all nodes)
+                # OPTIMIZATION: Check every 10 chunks to reduce Redis calls
+                # This adds max 0.5s delay to cancel response but reduces overhead
+                if chunk_count % 10 == 0 or chunk_count == 0:
+                    if redis_client.check_cancel_flag(session_id, message_id):
+                        logger.info(f"Streaming cancelled (via Redis) for session={session_id}, msg_id={message_id}")
+                        cancelled = True
+                        break
                 
                 accumulated_content += chunk
                 chunk_count += 1
@@ -318,56 +317,39 @@ class ChatService:
             redis_client.publish_message(session_id, error_message)
             redis_client.save_to_history(session_id, error_message)
         finally:
-            # Clean up tracking and mark as completed
-            if session_id in self.active_tasks:
-                del self.active_tasks[session_id]
-            
-            # Track as completed for 30 seconds to handle duplicate cancel requests
-            import time
-            self.completed_messages[session_id] = {
-                "message_id": message_id,
-                "completed_at": time.time()
-            }
-            
-            # Clean up old completed messages (older than 30 seconds)
-            current_time = time.time()
-            expired_sessions = [sid for sid, info in self.completed_messages.items() 
-                              if current_time - info["completed_at"] > 30]
-            for sid in expired_sessions:
-                del self.completed_messages[sid]
+            # Clean up Redis tracking
+            # Failures here are not critical - TTL will cleanup eventually
+            try:
+                redis_client.clear_active_stream(session_id)
+                redis_client.clear_cancel_flag(session_id, message_id)
+            except Exception as e:
+                logger.warning(f"Non-critical: Failed to cleanup Redis tracking: {e}")
         
         return message_id
     
     def cancel_streaming(self, session_id: str, message_id: str) -> bool:
         """
-        Cancel an active streaming task
-        Returns True if cancellation was successful
+        Cancel an active streaming task using Redis for distributed cancellation
+        Returns True if cancellation was successful or task is not found
         """
-        # Check if there's an active task
-        if session_id in self.active_tasks:
-            task_info = self.active_tasks[session_id]
-            if task_info["message_id"] == message_id:
-                # Check if already marked as cancelled
-                if task_info.get("cancelled", False):
-                    logger.info(f"Streaming already marked for cancellation: session={session_id}, msg_id={message_id}")
-                    return True  # Return True to indicate it's being handled
-                else:
-                    task_info["cancelled"] = True
-                    logger.info(f"Marked streaming for cancellation: session={session_id}, msg_id={message_id}")
-                    return True
+        # Check if there's an active streaming task in Redis
+        active_message_id = redis_client.get_active_stream(session_id)
+        
+        if active_message_id:
+            if active_message_id == message_id:
+                # Set cancel flag in Redis - this will be seen by all nodes
+                redis_client.set_cancel_flag(session_id, message_id, ttl=60)
+                logger.info(f"Set cancel flag in Redis: session={session_id}, msg_id={message_id}")
+                return True
             else:
-                logger.warning(f"Message ID mismatch for cancellation: expected={task_info['message_id']}, got={message_id}")
+                logger.warning(f"Message ID mismatch: active={active_message_id}, requested={message_id}")
                 return False
-        
-        # Check if this message was recently completed
-        if session_id in self.completed_messages:
-            completed_info = self.completed_messages[session_id]
-            if completed_info["message_id"] == message_id:
-                logger.info(f"Message already completed: session={session_id}, msg_id={message_id}")
-                return True  # Return True to indicate the message is no longer streaming
-        
-        logger.warning(f"No active or recent streaming task found for session={session_id}, msg_id={message_id}")
-        return False
+        else:
+            # No active task found - message may have already completed
+            # Still set cancel flag as a precaution (in case of race condition)
+            redis_client.set_cancel_flag(session_id, message_id, ttl=10)
+            logger.info(f"No active task found, but set cancel flag anyway: session={session_id}, msg_id={message_id}")
+            return True
 
 
 # Global chat service instance
