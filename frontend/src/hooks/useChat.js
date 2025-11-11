@@ -8,47 +8,92 @@ export const useChat = () => {
   const streamingMessagesRef = useRef(new Map());
   const pendingUserMessageIdsRef = useRef([]);
   const pendingUserReplacementsRef = useRef(new Map());
+  const replacePendingUserMessage = useCallback((currentMessages, incomingMessage) => {
+    if (!currentMessages || currentMessages.length === 0) {
+      return null;
+    }
+
+    const pendingIds = pendingUserMessageIdsRef.current;
+
+    for (let i = 0; i < pendingIds.length; i++) {
+      const tempId = pendingIds[i];
+      const index = currentMessages.findIndex(m => m?.message_id === tempId);
+      if (index !== -1) {
+        const updated = [...currentMessages];
+        updated[index] = {
+          ...updated[index],
+          ...incomingMessage,
+          is_complete: true
+        };
+
+        pendingIds.splice(i, 1);
+        pendingUserReplacementsRef.current.delete(tempId);
+        return updated;
+      }
+    }
+
+    const fallbackIndex = currentMessages.findIndex(
+      (m) =>
+        m?.role === 'user' &&
+        typeof m?.message_id === 'string' &&
+        m.message_id.startsWith('temp_')
+    );
+
+    if (fallbackIndex !== -1) {
+      const updated = [...currentMessages];
+      const fallbackId = updated[fallbackIndex].message_id;
+
+      updated[fallbackIndex] = {
+        ...updated[fallbackIndex],
+        ...incomingMessage,
+        is_complete: true
+      };
+
+      const queueIndex = pendingIds.indexOf(fallbackId);
+      if (queueIndex !== -1) {
+        pendingIds.splice(queueIndex, 1);
+      }
+      pendingUserReplacementsRef.current.delete(fallbackId);
+      return updated;
+    }
+
+    return null;
+  }, []);
 
   const handleStreamingMessage = useCallback((message) => {
     if (message.role === 'user') {
       // User message - replace pending optimistic message or append if unmatched
       setMessages((prev) => {
-        // Already present with server-provided ID
-        const existingIndex = prev.findIndex(m => m.message_id === message.message_id);
-        if (existingIndex >= 0) {
+        if (!message?.message_id) {
           return prev;
         }
 
-        const updated = [...prev];
+        // Update if the authoritative message already exists
+        const existingIndex = prev.findIndex(m => m?.message_id === message.message_id);
+        if (existingIndex >= 0) {
+          const updatedExisting = [...prev];
+          updatedExisting[existingIndex] = {
+            ...updatedExisting[existingIndex],
+            ...message,
+            is_complete: true
+          };
+          return updatedExisting;
+        }
 
+        const replaced = replacePendingUserMessage(prev, message);
+        if (replaced) {
+          return replaced;
+        }
+
+        // Optimistic entry not yet in state - store for later replacement
         if (pendingUserMessageIdsRef.current.length > 0) {
-          const tempId = pendingUserMessageIdsRef.current.find(
-            id => !pendingUserReplacementsRef.current.has(id)
-          ) ?? pendingUserMessageIdsRef.current[0];
-          const tempIndex = updated.findIndex(m => m.message_id === tempId);
-
-          if (tempIndex >= 0) {
-            // Found optimistic entry - replace with authoritative message
-            const queueIndex = pendingUserMessageIdsRef.current.indexOf(tempId);
-            if (queueIndex >= 0) {
-              pendingUserMessageIdsRef.current.splice(queueIndex, 1);
-            }
-            pendingUserReplacementsRef.current.delete(tempId);
-            updated[tempIndex] = {
-              ...updated[tempIndex],
-              ...message,
-              is_complete: true
-            };
-            return updated;
-          }
-
-          // Optimistic entry not yet in state - store for later replacement
+          const tempId = pendingUserMessageIdsRef.current[0];
           pendingUserReplacementsRef.current.set(tempId, message);
           return prev;
         }
 
         // No pending optimistic message, append as new
-        return [...updated, { ...message, is_complete: true }];
+        return [...prev, { ...message, is_complete: true }];
       });
     } else if (message.role === 'assistant') {
       // Assistant message - handle streaming
@@ -105,7 +150,7 @@ export const useChat = () => {
         });
       }
     }
-  }, []);
+  }, [replacePendingUserMessage]);
 
   const loadHistory = useCallback((historyMessages) => {
     setMessages(historyMessages);
