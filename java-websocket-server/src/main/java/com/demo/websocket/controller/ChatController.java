@@ -1,12 +1,14 @@
 package com.demo.websocket.controller;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.RestClientException;
 
 import java.util.Map;
 
@@ -25,8 +27,9 @@ public class ChatController {
     @Value("${ai.service.url:http://python-ai:8000}")
     private String aiServiceUrl;
 
-    public ChatController() {
-        this.restTemplate = new RestTemplate();
+    @Autowired
+    public ChatController(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
     }
 
     /**
@@ -77,6 +80,15 @@ public class ChatController {
                     .status(HttpStatus.BAD_GATEWAY)
                     .body(Map.of(
                             "error", "AI service error",
+                            "detail", e.getMessage()
+                    ));
+                    
+        } catch (RestClientException e) {
+            log.error("REST client error proxying chat request: {}", e.getMessage(), e);
+            return ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(Map.of(
+                            "error", "Communication error with AI service",
                             "detail", e.getMessage()
                     ));
                     
@@ -141,6 +153,15 @@ public class ChatController {
                             "detail", e.getMessage()
                     ));
                     
+        } catch (RestClientException e) {
+            log.error("REST client error proxying cancel request: {}", e.getMessage(), e);
+            return ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(Map.of(
+                            "error", "Communication error with AI service",
+                            "detail", e.getMessage()
+                    ));
+                    
         } catch (Exception e) {
             log.error("Error proxying cancel request", e);
             return ResponseEntity
@@ -189,6 +210,15 @@ public class ChatController {
                     .status(HttpStatus.BAD_GATEWAY)
                     .body(Map.of(
                             "error", "AI service error",
+                            "detail", e.getMessage()
+                    ));
+                    
+        } catch (RestClientException e) {
+            log.error("REST client error proxying history request: {}", e.getMessage(), e);
+            return ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(Map.of(
+                            "error", "Communication error with AI service",
                             "detail", e.getMessage()
                     ));
                     
@@ -242,6 +272,15 @@ public class ChatController {
                             "detail", e.getMessage()
                     ));
                     
+        } catch (RestClientException e) {
+            log.error("REST client error proxying clear history request: {}", e.getMessage(), e);
+            return ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(Map.of(
+                            "error", "Communication error with AI service",
+                            "detail", e.getMessage()
+                    ));
+                    
         } catch (Exception e) {
             log.error("Error proxying clear history request", e);
             return ResponseEntity
@@ -268,6 +307,16 @@ public class ChatController {
                     "status", response.getBody() != null ? response.getBody().get("status") : "unknown",
                     "url", aiServiceUrl
             ));
+                    
+        } catch (RestClientException e) {
+            log.error("REST client error during AI service health check: {}", e.getMessage(), e);
+            return ResponseEntity
+                    .status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of(
+                            "ai_service", "unreachable",
+                            "error", "Communication error: " + e.getMessage(),
+                            "url", aiServiceUrl
+                    ));
                     
         } catch (Exception e) {
             log.error("AI service health check failed", e);
