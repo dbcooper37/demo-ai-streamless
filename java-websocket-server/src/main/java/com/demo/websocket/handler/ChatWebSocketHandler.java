@@ -93,16 +93,18 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             // Record metrics
             metricsService.recordWebSocketConnection(userId, true);
 
-            // Send welcome message
-            sendWelcomeMessage(wsSession, sessionId);
-
-            // Send chat history
-            sendChatHistory(wsSession, sessionId);
-
-            // Start streaming session with enhanced orchestrator
-            // This will handle Redis PubSub subscription internally
+            // ✅ FIX: Subscribe to PubSub BEFORE reading history to prevent race condition
+            // This ensures we don't miss any messages published between history read and subscription
+            // See: FIX_IMPLEMENTATION_PLAN.md for details
             chatOrchestrator.startStreamingSession(sessionId, userId,
                     new WebSocketStreamCallback(wsSession));
+
+            // Send chat history AFTER subscription to avoid missing chunks
+            // Note: This may cause some duplicate chunks, but client handles deduplication
+            sendChatHistory(wsSession, sessionId);
+
+            // Send welcome message
+            sendWelcomeMessage(wsSession, sessionId);
 
         } catch (SecurityException e) {
             log.error("Security violation during connection: sessionId={}", sessionId, e);

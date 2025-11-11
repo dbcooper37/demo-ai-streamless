@@ -8,6 +8,10 @@ export const useChat = () => {
   const streamingMessagesRef = useRef(new Map());
   const pendingUserMessageIdsRef = useRef([]);
   const pendingUserReplacementsRef = useRef(new Map());
+  
+  // ✅ Deduplication: Track seen messages to prevent duplicates from race condition
+  // When we subscribe before reading history, we may receive same chunks from both PubSub and history
+  const seenMessagesRef = useRef(new Set());
   const replacePendingUserMessage = useCallback((currentMessages, incomingMessage) => {
     if (!currentMessages || currentMessages.length === 0) {
       return null;
@@ -61,6 +65,18 @@ export const useChat = () => {
   }, []);
 
   const handleStreamingMessage = useCallback((message) => {
+    // ✅ Deduplication: Create unique key for this message
+    const messageKey = `${message.message_id}-${message.timestamp || Date.now()}`;
+    
+    // Skip if we've already processed this exact message
+    if (seenMessagesRef.current.has(messageKey)) {
+      console.debug('[useChat] Duplicate message skipped:', messageKey);
+      return;
+    }
+    
+    // Mark as seen
+    seenMessagesRef.current.add(messageKey);
+    
     if (message.role === 'user') {
       // User message - replace pending optimistic message or append if unmatched
       setMessages((prev) => {
@@ -153,6 +169,12 @@ export const useChat = () => {
   }, [replacePendingUserMessage]);
 
   const loadHistory = useCallback((historyMessages) => {
+    // ✅ Deduplication: Mark history messages as seen to prevent duplicates
+    historyMessages.forEach(msg => {
+      const key = `${msg.message_id}-${msg.timestamp || Date.now()}`;
+      seenMessagesRef.current.add(key);
+    });
+    
     setMessages(historyMessages);
     streamingMessagesRef.current.clear();
     pendingUserMessageIdsRef.current = [];
@@ -164,6 +186,7 @@ export const useChat = () => {
     streamingMessagesRef.current.clear();
     pendingUserMessageIdsRef.current = [];
     pendingUserReplacementsRef.current = new Map();
+    seenMessagesRef.current.clear(); // ✅ Clear deduplication cache
   }, []);
 
   const addUserMessage = useCallback((messageId, content, sessionId, userId) => {
