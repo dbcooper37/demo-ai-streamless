@@ -336,10 +336,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Connect through load balancer
+      # Changed: Route ALL requests through NGINX load balancer (port 8080)
+      # NGINX will distribute WebSocket and API calls across Java backend nodes
+      # Java backends will proxy API requests to AI service as needed
       - VITE_WS_URL=ws://localhost:8080/ws/chat
-      # Round-robin to AI nodes (frontend can implement client-side load balancing)
-      - VITE_API_URL=http://localhost:8001
+      - VITE_API_URL=http://localhost:8080/api
     depends_on:
       - nginx-lb
       - python-ai-1

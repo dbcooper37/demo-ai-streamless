@@ -76,64 +76,92 @@ public class RedisStreamCache {
     /**
      * Append chunk to stream using Redis List
      * Optimized for sequential writes and range reads
+     * 
+     * This method is designed to be resilient to:
+     * - Race conditions in multi-node deployments
+     * - Duplicate chunk submissions
+     * - Temporary Redis connectivity issues
+     * - Lock contention
      */
     public void appendChunk(String messageId, StreamChunk chunk) {
         String key = CHUNKS_KEY.replace("{messageId}", messageId);
+        RLock lock = null;
 
         try {
             // Use distributed lock to ensure chunk ordering
-            RLock lock = redissonClient.getLock(LOCK_KEY.replace("{messageId}", messageId));
+            lock = redissonClient.getLock(LOCK_KEY.replace("{messageId}", messageId));
 
+            // Try to acquire lock with timeout
+            boolean lockAcquired = false;
             try {
-                if (lock.tryLock(100, 5000, TimeUnit.MILLISECONDS)) {
-                    try {
-                        // NEW: Idempotency check - verify expected index matches current list size
-                        Long currentSize = redisTemplate.opsForList().size(key);
-                        int expectedIndex = (currentSize != null ? currentSize.intValue() : 0);
-                        
-                        if (chunk.getIndex() != expectedIndex) {
-                            // Skip if index mismatch (already appended by another node)
-                            log.warn("Skipping duplicate/mismatched chunk append: messageId={}, expectedIndex={}, actualIndex={}, currentSize={}", 
-                                     messageId, expectedIndex, chunk.getIndex(), currentSize);
-                            return;  // Skip instead of fail
-                        }
-
-                        // Serialize chunk
-                        String chunkJson = objectMapper.writeValueAsString(chunk);
-
-                        // Append to list (right push for sequential order)
-                        redisTemplate.opsForList().rightPush(key, chunkJson);
-
-                        // Set/update TTL
-                        redisTemplate.expire(key, CHUNKS_TTL);
-
-                        // Update chunk index for verification
-                        String metaKey = METADATA_KEY.replace("{messageId}", messageId);
-                        redisTemplate.opsForValue().increment(metaKey + ":lastIndex");
-
-                        log.debug("Appended chunk: messageId={}, index={}", messageId, chunk.getIndex());
-
-                    } finally {
-                        lock.unlock();
-                    }
-                } else {
-                    // Another node is currently writing this chunk; treat as race and skip
-                    log.warn("Lock busy, skipping chunk append: messageId={}, index={}", messageId, chunk.getIndex());
-                    return;
-                }
+                lockAcquired = lock.tryLock(100, 5000, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while acquiring lock", e);
+                log.warn("Interrupted while acquiring lock for chunk append: messageId={}, index={}", 
+                        messageId, chunk.getIndex());
+                return; // Gracefully skip this chunk, will be handled by recovery
             }
 
-        } catch (Exception e) {
-            log.error("Failed to append chunk: messageId={}, index={}",
-                    messageId, chunk.getIndex(), e);
-            // NEW: Only throw if not a duplicate (idempotency); otherwise log and continue
-            if (!e.getMessage().contains("Skipping duplicate")) {
-                throw new RuntimeException("Chunk append failed (non-duplicate error)", e);
+            if (!lockAcquired) {
+                // Another node is currently writing; treat as race condition and skip
+                log.debug("Lock acquisition timeout, assuming concurrent write: messageId={}, index={}", 
+                        messageId, chunk.getIndex());
+                return; // Gracefully skip, recovery will handle if truly missing
             }
-            log.warn("Chunk append skipped due to race condition (multi-node), but streaming continues");
+
+            try {
+                // Idempotency check - verify expected index matches current list size
+                Long currentSize = redisTemplate.opsForList().size(key);
+                int expectedIndex = (currentSize != null ? currentSize.intValue() : 0);
+                
+                if (chunk.getIndex() < expectedIndex) {
+                    // Duplicate chunk - already appended
+                    log.debug("Skipping duplicate chunk: messageId={}, chunkIndex={}, currentSize={}", 
+                             messageId, chunk.getIndex(), currentSize);
+                    return;
+                } else if (chunk.getIndex() > expectedIndex) {
+                    // Gap detected - log warning but continue
+                    log.warn("Chunk gap detected: messageId={}, expectedIndex={}, actualIndex={}, currentSize={} - Recovery will handle", 
+                             messageId, expectedIndex, chunk.getIndex(), currentSize);
+                    // Don't return - still try to append, recovery will fill gaps
+                }
+
+                // Serialize chunk
+                String chunkJson = objectMapper.writeValueAsString(chunk);
+
+                // Append to list (right push for sequential order)
+                redisTemplate.opsForList().rightPush(key, chunkJson);
+
+                // Set/update TTL
+                redisTemplate.expire(key, CHUNKS_TTL);
+
+                // Update chunk index for verification
+                String metaKey = METADATA_KEY.replace("{messageId}", messageId);
+                redisTemplate.opsForValue().increment(metaKey + ":lastIndex");
+
+                log.debug("Successfully appended chunk: messageId={}, index={}, size={}", 
+                        messageId, chunk.getIndex(), chunk.getContent().length());
+
+            } finally {
+                // Always unlock if we acquired the lock
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
+            }
+
+        } catch (JsonProcessingException e) {
+            // Serialization error - log but don't throw
+            log.error("Failed to serialize chunk (skipping): messageId={}, index={}", 
+                    messageId, chunk.getIndex(), e);
+            // Gracefully skip - the chunk content is already sent via WebSocket
+            
+        } catch (Exception e) {
+            // Catch-all for Redis connectivity issues, etc.
+            log.error("Error appending chunk to cache (continuing): messageId={}, index={}, error={}",
+                    messageId, chunk.getIndex(), e.getMessage());
+            // Don't throw - streaming can continue even if cache append fails
+            // The chunk was already sent to the client via WebSocket
+            // Recovery mechanism can handle gaps if needed
         }
     }
 
