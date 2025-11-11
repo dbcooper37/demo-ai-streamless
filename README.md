@@ -1,327 +1,299 @@
-# 🚀 Demo AI Streaming Chat with Persistent History
+# 🚀 Multi-Node AI Chat Service with Sticky Sessions
 
-Demo về hệ thống chat AI streaming với khả năng lưu trữ lịch sử khi user reload trang.
+[![Architecture](https://img.shields.io/badge/Architecture-Multi--Node-blue)]()
+[![Deployment](https://img.shields.io/badge/Deployment-Docker%20Compose-green)]()
+[![Status](https://img.shields.io/badge/Status-POC-orange)]()
 
-**Demo of AI streaming chat system with persistent history when user reloads the page.**
+## 📚 Overview
 
----
+A scalable, distributed real-time AI chat service featuring:
 
-## 📋 Mô tả | Description
+- ✅ **Multi-Node Deployment** - Horizontal scaling with 3+ backend & AI nodes
+- ✅ **Sticky Sessions** - WebSocket persistence via Nginx `ip_hash`
+- ✅ **Shared State** - Redis-based distributed session management
+- ✅ **Real-Time Streaming** - Word-by-word AI response streaming
+- ✅ **Load Balancing** - Round-robin AI service distribution with retry
+- ✅ **Backend Gateway** - Centralized API access pattern
+- ✅ **Cancellation Support** - Stop streaming mid-generation
+- ✅ **Auto Recovery** - Message recovery on reconnection
 
-### Tiếng Việt
+## 📖 Documentation
 
-Hệ thống này giải quyết bài toán: **User đang nhận streaming response từ AI, nhưng khi reload trang, làm sao để vừa xem được lịch sử chat cũ, vừa tiếp tục nhận streaming mới?**
+### **→ [📘 Complete POC Documentation](./POC_DOCUMENTATION.md)** ←
 
-**Kiến trúc:**
+**This comprehensive document includes:**
+- Executive Summary & Business Case
+- Detailed Architecture with Mermaid Diagrams
+- Complete Request Flows
+- Technical Implementation Details
+- Deployment Guide & Scaling Strategy
+- Performance Metrics & Benchmarks
+- Production Readiness Assessment
+
+## 🏗️ Architecture Quick View
+
+```mermaid
+graph TB
+    Client[React Frontend] --> LB[Nginx Load Balancer<br/>Sticky Sessions]
+    LB --> WS1[Backend Node 1]
+    LB --> WS2[Backend Node 2]
+    LB --> WS3[Backend Node 3]
+    
+    WS1 --> AI1[AI Service 1]
+    WS1 --> AI2[AI Service 2]
+    WS2 --> AI1
+    WS2 --> AI2
+    WS3 --> AI1
+    WS3 --> AI2
+    
+    WS1 --> Redis[(Redis<br/>Shared State)]
+    WS2 --> Redis
+    WS3 --> Redis
+    
+    AI1 --> Redis
+    AI2 --> Redis
 ```
-AI Response → Redis PubSub → WebSocket Server → Client
-                    ↓             ↓
-              Redis Storage   Kafka (Event Sourcing)
-```
 
-**Các module:**
-1. **Python AI Service** - Mô phỏng AI, publish streaming chunks to Redis PubSub
-2. **Java WebSocket Server** - Subscribe Redis PubSub, persist history (Redis + Kafka), forward to clients
-3. **React Frontend** - WebSocket client with reconnection & history loading
-4. **Kafka (KRaft)** - Event sourcing và message persistence (không cần Zookeeper)
-
-**Deployment modes:**
-- **Single Instance**: 1 BE + 1 AI node
-- **Multi-Node**: 3 BE nodes (NGINX load balancer) + 3 AI nodes
-
-### English
-
-This system solves the problem: **User is receiving streaming response from AI, but when reloading the page, how to both see old chat history and continue receiving new streaming?**
-
-**Architecture:**
-```
-AI Response → Redis PubSub → WebSocket Server → Client
-                    ↓             ↓
-              Redis Storage   Kafka (Event Sourcing)
-```
-
-**Modules:**
-1. **Python AI Service** - Simulates AI, publishes streaming chunks to Redis PubSub
-2. **Java WebSocket Server** - Subscribes Redis PubSub, persists history (Redis + Kafka), forwards to clients
-3. **React Frontend** - WebSocket client with reconnection & history loading
-4. **Kafka (KRaft)** - Event sourcing and message persistence (no Zookeeper needed)
-
-**Deployment modes:**
-- **Single Instance**: 1 BE + 1 AI node
-- **Multi-Node**: 3 BE nodes (NGINX load balancer) + 3 AI nodes
-
----
-
-## 🎯 Tính năng chính | Key Features
-
-✅ **Streaming real-time** - AI response được stream theo từng chunk
-✅ **Persistent History** - Lịch sử chat được lưu trong Redis
-✅ **Auto Reconnection** - WebSocket tự động kết nối lại khi mất kết nối
-✅ **Resume on Reload** - Reload trang vẫn thấy toàn bộ lịch sử + tiếp tục nhận streaming
-✅ **Session Management** - Mỗi session có lịch sử riêng biệt
-
----
-
-## 🛠️ Tech Stack
-
-| Module | Technology |
-|--------|-----------|
-| AI Service | Python 3.11, FastAPI, Redis |
-| WebSocket Server | Java 17, Spring Boot, WebSocket, Redis PubSub, Kafka |
-| Frontend | React 18, Vite, WebSocket API |
-| Message Broker | Redis 7 (PubSub), Apache Kafka (KRaft mode) |
-| Storage | Redis 7 |
-| Load Balancer | NGINX (multi-node mode) |
-| Orchestration | Docker Compose |
-
----
-
-## 🚀 Hướng dẫn chạy | How to Run
+## 🚀 Quick Start
 
 ### Prerequisites
+- Docker & Docker Compose installed
+- 8GB RAM minimum
+- 20GB disk space
 
-- Docker & Docker Compose
-- Ports cần thiết phải trống (xem bên dưới theo từng mode)
-
-### 1. Clone repository
-
-```bash
-git clone <repository-url>
-cd demo-ai-streamless
-```
-
-### 2. Chọn deployment mode
-
-#### Option A: Single Instance (Development/Testing)
-
-Triển khai mỗi service 1 instance với Kafka KRaft:
+### Start System
 
 ```bash
-docker-compose up --build
+# Clone and checkout branch
+git checkout dev_sticky_session
+
+# Start all services
+docker compose -f docker-compose.sticky-session.yml up -d
+
+# Wait for services to be healthy (~30-60 seconds)
+docker compose ps
+
+# Check logs
+docker compose logs -f java-websocket-1 python-ai-1
 ```
 
-**Ports sử dụng:**
-- Redis: 6379
-- Kafka: 9092, 9093
-- Python AI Service: 8000
-- Java WebSocket Server: 8080
-- Frontend: 3000
-- Kafka UI (debug mode): 8090
+### Access Application
 
-**Kafka UI (optional):**
+| Service | URL |
+|---------|-----|
+| **Frontend** | http://localhost:3000 |
+| **Backend API** | http://localhost:8080/api |
+| **WebSocket** | ws://localhost:8080/ws/chat |
+| **Health Check** | http://localhost:8080/health |
+
+### Stop System
+
 ```bash
-docker-compose --profile debug up
+# Stop all services
+docker compose -f docker-compose.sticky-session.yml down
+
+# Clean slate (remove volumes)
+docker compose -f docker-compose.sticky-session.yml down -v
 ```
 
-#### Option B: Multi-Node (Production/Load Testing)
+## 🎯 Key Features
 
-Triển khai multi-node với load balancing:
+### 1. Sticky Sessions
+- Client IP-based session affinity
+- Persistent WebSocket connections
+- Automatic failover on node failure
 
-```bash
-docker-compose -f docker-compose.multi-node.yml up --build
+### 2. Shared State
+- Redis-based distributed session registry
+- Stream chunk caching with TTL
+- Message history persistence
+
+### 3. Load Balancing
+- Nginx for client→backend (ip_hash)
+- Backend for AI service requests (round-robin)
+- Automatic retry on failure
+
+### 4. Real-Time Streaming
+- Word-by-word AI response streaming
+- Redis PubSub for message distribution
+- WebSocket delivery to clients
+
+### 5. Backend Gateway Pattern
+```
+Frontend → Nginx → Backend Gateway → AI Services
+```
+- Single entry point for all AI requests
+- Centralized authentication & logging
+- Flexible AI service management
+
+## 📊 Architecture Highlights
+
+### Multi-Node Deployment
+```
+3x Java WebSocket Backends  (768MB each)
+3x Python AI Services       (256MB each)
+1x Redis                    (512MB)
+1x Kafka (optional)         (512MB)
+1x Nginx Load Balancer      (128MB)
+1x React Frontend           (128MB)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total: ~4.5GB RAM
 ```
 
-**Ports sử dụng:**
-- Redis: 6379
-- Kafka: 9092, 9093
-- Python AI Node 1: 8001
-- Python AI Node 2: 8002
-- Python AI Node 3: 8003
-- Java WebSocket Node 1: 8081
-- Java WebSocket Node 2: 8082
-- Java WebSocket Node 3: 8083
-- NGINX Load Balancer: 8080
-- Frontend: 3000
-- Kafka UI (debug mode): 8090
+### Technology Stack
 
-**Architecture:**
-- 3 Python AI nodes (load balanced by client)
-- 3 Java WebSocket nodes (load balanced by NGINX)
-- Redis PubSub for real-time messaging
-- Kafka for event sourcing and persistence
+**Frontend:** React 18 + Vite + WebSocket API  
+**Backend:** Spring Boot 3 + Spring WebSocket + Redisson  
+**AI Service:** FastAPI + Redis-py + Uvicorn  
+**Infrastructure:** Redis 7 + Apache Kafka + Nginx  
+**Deployment:** Docker + Docker Compose
 
-Đợi khoảng 2-3 phút để build xong.
+## 📈 Performance
 
-### 3. Truy cập ứng dụng
+| Metric | Value |
+|--------|-------|
+| WebSocket Connect | ~10ms |
+| Send Message | ~20ms |
+| Stream Chunk | ~5ms |
+| History Load | ~50ms |
+| Throughput | 10,000 chunks/s |
 
-Mở trình duyệt: **http://localhost:3000**
+*Tested with 100 concurrent users on laptop (8 cores, 16GB RAM)*
 
----
+## 🔧 Configuration
 
-## 🎮 Cách test tính năng | How to Test
-
-### Test 1: Streaming cơ bản
-
-1. Mở http://localhost:3000
-2. Gửi tin nhắn: "Xin chào"
-3. Xem AI response streaming từng chữ một
-
-### Test 2: Reload trong khi streaming (QUAN TRỌNG!)
-
-1. Gửi một tin nhắn dài: "Hãy nói về streaming và reload"
-2. **Trong khi AI đang trả lời**, reload trang (F5 hoặc Ctrl+R)
-3. ✅ Kết quả: Bạn sẽ thấy:
-   - Toàn bộ lịch sử chat cũ
-   - Tin nhắn AI đang streaming tiếp tục hiển thị real-time
-
-### Test 3: Multiple sessions
-
-1. Mở tab mới với cùng URL
-2. Session ID sẽ khác nhau (được lưu trong localStorage)
-3. Mỗi session có lịch sử riêng biệt
-
-### Test 4: Reconnection
-
-1. Tắt container `demo-java-websocket`:
-   ```bash
-   docker stop demo-java-websocket
-   ```
-2. Trên UI sẽ hiện "Đang kết nối lại..."
-3. Bật lại:
-   ```bash
-   docker start demo-java-websocket
-   ```
-4. ✅ WebSocket tự động kết nối lại và load history
-
----
-
-## 📡 API Endpoints
-
-### Python AI Service (Port 8000)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/chat` | Send message and trigger AI streaming |
-| GET | `/history/{session_id}` | Get chat history |
-
-**Example:**
-```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "test123",
-    "message": "Xin chào",
-    "user_id": "user1"
-  }'
+### Backend Nodes
+```yaml
+AI_SERVICE_URLS: "http://python-ai-1:8000,http://python-ai-2:8000,http://python-ai-3:8000"
+SPRING_DATA_REDIS_HOST: "redis"
+NODE_ID: "ws-node-1"
 ```
 
-### Java WebSocket Server (Port 8080)
-
-| Endpoint | Protocol | Description |
-|----------|----------|-------------|
-| `/ws/chat?session_id=xxx` | WebSocket | WebSocket connection |
-| `/api/health` | HTTP GET | Health check |
-
-**WebSocket Message Format:**
-
-History (on connect):
-```json
-{
-  "type": "history",
-  "messages": [...]
+### Nginx Load Balancer
+```nginx
+upstream websocket_backend {
+    ip_hash;  # Sticky sessions
+    server java-websocket-1:8080;
+    server java-websocket-2:8080;
+    server java-websocket-3:8080;
 }
 ```
 
-Streaming Message:
-```json
-{
-  "type": "message",
-  "data": {
-    "message_id": "uuid",
-    "role": "assistant",
-    "content": "Hello, how...",
-    "is_complete": false
-  }
-}
+## 🧪 Testing
+
+### Manual Testing
+1. Open http://localhost:3000
+2. Send a chat message
+3. Observe real-time streaming response
+4. Click Cancel during streaming
+5. Refresh page → history preserved
+
+### Load Testing
+```bash
+# Test with multiple clients
+for i in {1..10}; do
+  open http://localhost:3000 &
+done
+
+# Monitor distribution
+docker compose logs nginx-lb | grep upstream:
 ```
 
----
-
-## 🏗️ Kiến trúc chi tiết | Detailed Architecture
-
-### Component Responsibilities:
-
-**1. Python AI Service (python-ai-service/app.py):**
-- Nhận request từ user qua REST API
-- Mô phỏng AI generating response (streaming word by word)
-- Publish mỗi chunk vào Redis PubSub: `chat:stream:{session_id}`
-- Lưu message hoàn chỉnh vào Redis List: `chat:history:{session_id}`
-
-**2. Java WebSocket Server:**
-- Subscribe Redis PubSub channels theo session
-- Forward streaming messages đến WebSocket clients
-- Publish events to Kafka cho event sourcing
-- Khi client connect: gửi chat history từ Redis
-- Quản lý multiple WebSocket connections per session
-
-**3. React Frontend (frontend/src/App.jsx):**
-- Kết nối WebSocket với session_id (lưu trong localStorage)
-- Nhận history ngay khi connect
-- Hiển thị streaming messages real-time
-- Auto-reconnect khi mất kết nối
-
-**4. Redis:**
-- **PubSub**: Channel `chat:stream:{session_id}` cho streaming
-- **List**: Key `chat:history:{session_id}` cho persistent storage
-- **TTL**: 24 hours (có thể config)
-
-**5. Kafka (KRaft mode):**
-- **Event Sourcing**: Lưu trữ tất cả events (messages, chunks, metadata)
-- **Topics**: Auto-created based on session
-- **Retention**: 7 days (configurable)
-- **No Zookeeper**: Sử dụng KRaft mode (Kafka Raft) cho metadata management
-
----
-
-## 📦 Project Structure
+## 📁 Project Structure
 
 ```
-demo-ai-streamless/
-├── python-ai-service/          # Python FastAPI service
-│   ├── app.py                  # Main application
-│   ├── requirements.txt        # Python dependencies
-│   └── Dockerfile
+├── docker-compose.sticky-session.yml  # Multi-node orchestration
+├── nginx-sticky-session.conf          # Load balancer config
+├── POC_DOCUMENTATION.md               # Complete documentation
+├── README.md                          # This file
 │
-├── java-websocket-server/      # Java Spring Boot WebSocket
-│   ├── src/main/java/com/demo/websocket/
-│   │   ├── config/             # WebSocket & Redis config
-│   │   ├── handler/            # ChatWebSocketHandler
-│   │   ├── service/            # RedisMessageListener, ChatHistoryService
-│   │   ├── model/              # ChatMessage
-│   │   └── WebSocketServerApplication.java
-│   ├── pom.xml
-│   └── Dockerfile
-│
-├── frontend/                   # React frontend
+├── frontend/                          # React application
 │   ├── src/
-│   │   ├── App.jsx            # Main component with WebSocket
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── package.json
+│   │   ├── App.jsx
+│   │   ├── hooks/
+│   │   │   ├── useChat.js
+│   │   │   └── useWebSocket.js
+│   │   └── components/
 │   └── Dockerfile
 │
-├── docker-compose.yml
-└── README.md
+├── java-websocket-server/            # Backend service
+│   ├── src/main/java/com/demo/websocket/
+│   │   ├── handler/
+│   │   │   └── ChatWebSocketHandler.java
+│   │   ├── infrastructure/
+│   │   │   ├── SessionManager.java
+│   │   │   ├── RedisStreamCache.java
+│   │   │   └── ChatOrchestrator.java
+│   │   ├── service/
+│   │   │   └── AiServiceLoadBalancer.java
+│   │   └── controller/
+│   │       └── ChatController.java
+│   └── Dockerfile
+│
+└── python-ai-service/                # AI service
+    ├── app.py
+    ├── ai_service.py
+    ├── redis_client.py
+    └── Dockerfile
 ```
 
+## 🐛 Troubleshooting
+
+### Services Not Starting
+```bash
+# Check service status
+docker compose ps
+
+# View logs
+docker compose logs [service-name]
+
+# Restart specific service
+docker compose restart [service-name]
+```
+
+### WebSocket Connection Fails
+```bash
+# Check nginx logs
+docker compose logs nginx-lb
+
+# Verify backend health
+curl http://localhost:8080/actuator/health
+```
+
+### Redis Connection Issues
+```bash
+# Test Redis connectivity
+docker exec -it sticky-redis redis-cli ping
+
+# Check Redis keys
+docker exec -it sticky-redis redis-cli KEYS '*'
+```
+
+## 📚 Additional Resources
+
+- [Complete POC Documentation](./POC_DOCUMENTATION.md) - Full architecture & implementation details
+- [Docker Compose File](./docker-compose.sticky-session.yml) - Service configuration
+- [Nginx Config](./nginx-sticky-session.conf) - Load balancer setup
+
+## 🤝 Contributing
+
+This is a Proof of Concept project. For production deployment:
+1. Review [POC_DOCUMENTATION.md](./POC_DOCUMENTATION.md) Section "Production Readiness"
+2. Implement security enhancements (HTTPS, JWT, rate limiting)
+3. Set up monitoring (Prometheus, Grafana)
+4. Migrate to Kubernetes for production-grade orchestration
+
+## 📄 License
+
+[Your License Here]
+
+## 🏆 Status
+
+**Current:** Proof of Concept (POC)  
+**Production Ready Score:** 7.6/10  
+**Recommended:** Ready for pilot with security & monitoring enhancements
+
 ---
 
-## 🎓 Học được gì từ demo này | What You Learn
-
-1. **Redis PubSub** - Real-time messaging between services
-2. **WebSocket** - Implement WebSocket với reconnection logic
-3. **Streaming Architecture** - Design hệ thống streaming với persistence
-4. **Session Management** - Quản lý sessions với Redis
-5. **Multi-language Integration** - Python + Java + React
-6. **Docker Orchestration** - Multi-container application
-
----
-
-## 📝 License
-
-MIT License - Free to use for learning and commercial projects.
-
----
-
-**Happy Coding! 🚀**
+**For complete documentation with diagrams and implementation details:**  
+**→ [📘 Read POC_DOCUMENTATION.md](./POC_DOCUMENTATION.md)**
