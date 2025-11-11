@@ -1,6 +1,6 @@
-# 🚀 Hệ Thống Chat AI Streaming với Lịch Sử Bền Vững
+# 🚀 Tài Liệu Kỹ Thuật: Hệ Thống Chat AI với Kiến Trúc Phân Tán và Streaming Real-time
 
-Demo về hệ thống chat AI streaming với khả năng lưu trữ và phục hồi lịch sử khi người dùng tải lại trang.
+Hệ thống chat AI sử dụng kiến trúc microservices phân tán với Spring Boot WebSocket, Python FastAPI, Redis PubSub, Apache Kafka, và React, hỗ trợ streaming real-time, session persistence, và khả năng phục hồi hoàn toàn khi người dùng reload trang trong quá trình streaming.
 
 ## 🎯 Giải Quyết Vấn Đề Gì?
 
@@ -159,14 +159,9 @@ const ws = new WebSocket('ws://localhost:8080/ws/chat?session_id=xxx&user_id=yyy
 
 ## 📚 Tài Liệu Chi Tiết
 
-Xem thêm tài liệu chi tiết trong thư mục `/docs`:
-
 | Tài Liệu | Nội Dung |
 |----------|----------|
-| [DOCUMENTATION.md](DOCUMENTATION.md) | Tổng quan toàn bộ tài liệu |
-| [docs/ARCHITECTURE_SUMMARY.md](docs/ARCHITECTURE_SUMMARY.md) | Kiến trúc hệ thống chi tiết |
-| [docs/KAFKA_SUMMARY.md](docs/KAFKA_SUMMARY.md) | Kafka integration overview |
-| [docs/KAFKA_USAGE_GUIDE.md](docs/KAFKA_USAGE_GUIDE.md) | Hướng dẫn sử dụng Kafka |
+| [DOCUMENTATION.md](DOCUMENTATION.md) | Tài liệu kiến trúc kỹ thuật chi tiết, sequence diagrams, implementation details |
 
 ## 🎯 Tính Năng Chính
 

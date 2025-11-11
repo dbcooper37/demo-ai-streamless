@@ -1,8 +1,8 @@
-# 🏗️ Kiến Trúc Hệ Thống: AI Streaming Chat với Persistent History
+# 🏗️ Tài Liệu Kiến Trúc Kỹ Thuật: Hệ Thống Real-time AI Chat với WebSocket và Event Sourcing
 
 ## 📋 Tổng Quan
 
-Đây là tài liệu kiến trúc chi tiết cho hệ thống **AI Streaming Chat** - một PoC (Proof of Concept) về real-time streaming chat với khả năng lưu trữ và phục hồi lịch sử khi user reload trang.
+Đây là tài liệu kiến trúc kỹ thuật chi tiết cho hệ thống **Real-time AI Streaming Chat** - một kiến trúc phân tán (distributed architecture) sử dụng WebSocket, Redis PubSub, Apache Kafka và Spring Boot để xây dựng hệ thống chat AI với khả năng streaming real-time, lưu trữ lịch sử bền vững (persistent history) và phục hồi session khi người dùng reload trang.
 
 ### 🎯 Vấn Đề Giải Quyết
 
@@ -1397,13 +1397,10 @@ curl http://localhost:8000/health
 
 ---
 
-## 📞 Additional Resources
+## 📞 Tài Liệu Bổ Sung
 
 ### Documentation Files
-- `README.md` - Quick start guide
-- `ARCHITECTURE.md` - Original architecture doc (this supersedes it)
-- `docs/KAFKA_SUMMARY.md` - Kafka usage summary
-- `docs/KAFKA_USAGE_GUIDE.md` - Kafka practical guide
+- `README.md` - Hướng dẫn nhanh và quick start guide
 
 ### Configuration Files
 - `docker-compose.yml` - Single-node setup
