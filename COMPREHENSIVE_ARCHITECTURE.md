@@ -751,25 +751,25 @@ def check_cancel_flag(self, session_id: str, message_id: str) -> bool:
 graph TB
     subgraph "Redis Keys"
         subgraph "PubSub Channels"
-            PC1[chat:stream:{session_id}<br/>Real-time chunks]
+            PC1["chat:stream:{session_id}<br/>Real-time chunks"]
         end
         
         subgraph "History Storage"
-            H1[chat:history:{session_id}<br/>List: LPUSH/LRANGE<br/>TTL: 24 hours]
+            H1["chat:history:{session_id}<br/>List: LPUSH/LRANGE<br/>TTL: 24 hours"]
         end
         
         subgraph "Session Ownership"
-            O1[session:owner:{session_id}<br/>String: SETNX<br/>TTL: 10 minutes<br/>Value: node_id]
+            O1["session:owner:{session_id}<br/>String: SETNX<br/>TTL: 10 minutes<br/>Value: node_id"]
         end
         
         subgraph "Streaming State"
-            S1[streaming:active:{session_id}<br/>String: message_id<br/>TTL: 5 minutes]
-            S2[streaming:cancel:{session}:{msg}<br/>String: flag<br/>TTL: 60 seconds]
+            S1["streaming:active:{session_id}<br/>String: message_id<br/>TTL: 5 minutes"]
+            S2["streaming:cancel:{session}:{msg}<br/>String: flag<br/>TTL: 60 seconds"]
         end
         
         subgraph "L2 Cache"
-            C1[cache:message:{message_id}<br/>String: JSON<br/>TTL: 5 minutes]
-            C2[cache:session:{session_id}<br/>String: JSON<br/>TTL: 10 minutes]
+            C1["cache:message:{message_id}<br/>String: JSON<br/>TTL: 5 minutes"]
+            C2["cache:session:{session_id}<br/>String: JSON<br/>TTL: 10 minutes"]
         end
     end
     
@@ -958,7 +958,7 @@ gantt
     
     section Java Backend
     Claim ownership        :20, 30
-    Call Python AI         :30, 40
+    "Call Python AI"         :30, 40
     
     section Python AI
     Save user msg          :40, 45
