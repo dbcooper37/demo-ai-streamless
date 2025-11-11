@@ -37,9 +37,12 @@ function App() {
     } else if (data.type === 'message') {
       handleStreamingMessage(data.data);
       // Track streaming message ID for cancel functionality
+      // ONLY track if it's an assistant message that is actively streaming
       if (data.data.role === 'assistant' && !data.data.is_complete) {
+        console.log('Tracking streaming message ID:', data.data.message_id);
         setStreamingMessageId(data.data.message_id);
-      } else if (data.data.is_complete) {
+      } else if (data.data.role === 'assistant' && data.data.is_complete) {
+        console.log('Stream completed for message:', data.data.message_id);
         setStreamingMessageId(null);
         setIsSending(false);
       }
@@ -49,7 +52,7 @@ function App() {
     } else if (data.type === 'chunk') {
       // Handle enhanced streaming chunks
       handleStreamingMessage(data.data);
-      if (data.data.role === 'assistant') {
+      if (data.data.role === 'assistant' && !data.data.is_complete) {
         setStreamingMessageId(data.data.message_id);
       }
     } else if (data.type === 'complete') {
@@ -108,17 +111,28 @@ function App() {
 
   // Cancel streaming message
   const cancelMessage = async () => {
-    if (!streamingMessageId) return;
+    if (!streamingMessageId) {
+      console.warn('No streaming message to cancel');
+      return;
+    }
+
+    console.log('Cancelling streaming message:', streamingMessageId);
 
     try {
-      await axios.post(`${API_URL}/cancel`, {
+      const response = await axios.post(`${API_URL}/cancel`, {
         session_id: sessionId,
         message_id: streamingMessageId
       });
       
-      console.log('Cancel request sent for message:', streamingMessageId);
+      console.log('Cancel request successful:', response.data);
+      
+      // Immediately update UI state
+      setStreamingMessageId(null);
+      setIsSending(false);
     } catch (error) {
       console.error('Error cancelling message:', error);
+      const errorMessage = error.response?.data?.detail || 'Không thể hủy tin nhắn';
+      alert(`Lỗi khi hủy: ${errorMessage}`);
     }
   };
 

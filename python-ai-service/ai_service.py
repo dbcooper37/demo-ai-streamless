@@ -63,7 +63,7 @@ class ChatService:
     def __init__(self):
         self.ai_service = AIService()
         # Track active streaming tasks for cancellation
-        self.active_tasks = {}  # session_id -> {"task": Task, "message_id": str, "cancelled": bool}
+        self.active_tasks = {}  # session_id -> {"message_id": str, "cancelled": bool}
     
     async def process_user_message(self, session_id: str, user_id: str, 
                                    message_content: str) -> str:
@@ -90,19 +90,31 @@ class ChatService:
         
         return message_id
     
-    async def stream_ai_response(self, session_id: str, user_id: str, 
-                                 user_message: str) -> str:
+    def prepare_streaming_response(self, session_id: str, user_id: str) -> str:
         """
-        Stream AI response chunk by chunk
-        Returns the message_id for tracking
+        Prepare for streaming response and return message_id
+        This allows frontend to track the message_id before streaming starts
         """
         message_id = str(uuid.uuid4())
         
-        # Track this streaming task
+        # Pre-register this message for cancellation tracking
         self.active_tasks[session_id] = {
             "message_id": message_id,
             "cancelled": False
         }
+        
+        logger.info(f"Prepared streaming response: session={session_id}, msg_id={message_id}")
+        return message_id
+    
+    async def stream_ai_response_with_id(self, session_id: str, user_id: str, 
+                                         user_message: str, message_id: str) -> None:
+        """
+        Stream AI response chunk by chunk with pre-assigned message_id
+        """
+        # Verify the message_id is registered
+        if session_id not in self.active_tasks or self.active_tasks[session_id]["message_id"] != message_id:
+            logger.error(f"Message ID mismatch or not registered: session={session_id}, msg_id={message_id}")
+            return
         
         logger.info(f"Starting AI response streaming for session={session_id}, msg_id={message_id}")
         
@@ -203,25 +215,29 @@ class ChatService:
             # Clean up tracking
             if session_id in self.active_tasks:
                 del self.active_tasks[session_id]
-        
-        return message_id
     
     def cancel_streaming(self, session_id: str, message_id: str) -> bool:
         """
         Cancel an active streaming task
         Returns True if cancellation was successful
         """
+        logger.info(f"Cancel request received: session={session_id}, msg_id={message_id}")
+        logger.info(f"Active tasks: {list(self.active_tasks.keys())}")
+        
         if session_id in self.active_tasks:
             task_info = self.active_tasks[session_id]
+            logger.info(f"Found active task for session: current_msg_id={task_info['message_id']}, requested_msg_id={message_id}")
+            
             if task_info["message_id"] == message_id:
                 task_info["cancelled"] = True
-                logger.info(f"Marked streaming for cancellation: session={session_id}, msg_id={message_id}")
+                logger.info(f"✅ Marked streaming for cancellation: session={session_id}, msg_id={message_id}")
                 return True
             else:
-                logger.warning(f"Message ID mismatch for cancellation: expected={task_info['message_id']}, got={message_id}")
+                logger.warning(f"❌ Message ID mismatch for cancellation: expected={task_info['message_id']}, got={message_id}")
                 return False
         else:
-            logger.warning(f"No active streaming task found for session={session_id}")
+            logger.warning(f"❌ No active streaming task found for session={session_id}")
+            logger.warning(f"Available sessions: {list(self.active_tasks.keys())}")
             return False
 
 

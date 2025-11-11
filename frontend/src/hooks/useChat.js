@@ -28,36 +28,43 @@ export const useChat = () => {
           if (index >= 0) {
             // Update existing message with final content
             const updated = [...prev];
-            updated[index] = message;
+            updated[index] = {
+              ...message,
+              is_complete: true
+            };
             return updated;
           } else {
-            // Add new message
+            // Add new message (shouldn't happen normally)
             return [...prev, message];
           }
         });
       } else {
         // Streaming chunk - use accumulated content from server
-        // NOTE: The server (Python AI service and ChatOrchestrator) already sends
-        // accumulated content in the 'content' field. We should NOT accumulate again
-        // on the client side to avoid duplicate/overlapping text.
+        // NOTE: The server already sends accumulated content
         setMessages((prev) => {
+          // IMPORTANT: Find by message_id to update the CORRECT message
+          // DO NOT update if not found - this prevents replacing wrong messages
           const index = prev.findIndex(m => m.message_id === message.message_id);
+          
           if (index >= 0) {
-            // Update message with latest accumulated content from server
+            // Update existing streaming message
             const updated = [...prev];
             updated[index] = {
-              ...message,
+              ...updated[index], // Keep existing properties
               content: message.content || '',
-              chunk: message.chunk || ''
+              chunk: message.chunk || '',
+              timestamp: message.timestamp,
+              is_complete: false
             };
             streamingMessagesRef.current.set(message.message_id, updated[index]);
             return updated;
           } else {
-            // Add new streaming message with initial content
+            // First chunk - add new streaming message
             const newMessage = {
               ...message,
               content: message.content || '',
-              chunk: message.chunk || ''
+              chunk: message.chunk || '',
+              is_complete: false
             };
             streamingMessagesRef.current.set(message.message_id, newMessage);
             return [...prev, newMessage];
